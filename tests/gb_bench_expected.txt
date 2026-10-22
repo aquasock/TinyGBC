@@ -28,3 +28,11 @@ TinyGBC GB FRAMES=24000 AVG=4565 MIN=215 MAX=9222 OVER=0 SPEED=366.7% SAMPLES=13
 TinyGBC GB FRAMES=3600 AVG=75 MIN=54 MAX=202 OVER=0 SPEED=22322.6% SAMPLES=1975050 VIDEO=42c0e370 AUDIO=b0c1088a
 # On the A25:
 TinyGBC GB FRAMES=3600 AVG=5063 MIN=4265 MAX=6118 OVER=0 SPEED=330.6% SAMPLES=1975050 VIDEO=42c0e370 AUDIO=b0c1088a
+
+# The same program with DISPLAY=1, which converts each frame into the video
+# unit's 15-bit format and writes it into the frame buffer not being shown.
+# The core's own checksums are unchanged by it, and FB is the checksum of the
+# converted picture, which an AE350 run of this build must reproduce. Two PC
+# runs gave the same FB line.
+TinyGBC GB FRAMES=1800 AVG=60 MIN=48 MAX=220 OVER=0 SPEED=27903.3% SAMPLES=987948 VIDEO=aaddaa41 AUDIO=a36b5633
+TinyGBC GB DISPLAY FB=d6e86438 PACE=0

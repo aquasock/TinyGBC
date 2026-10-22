@@ -23,6 +23,7 @@ can be compared:
 TinyGBC GB CORE=gambatte ROM=<bytes> CRC=<crc32> CGB=<0|1> AV=160x144 FPS=... START=<us>
 TinyGBC GB F=<frame> AVG=<us> MAX=<us> VIDEO=<crc> AUDIO=<crc>
 TinyGBC GB FRAMES=<n> AVG=<us> MIN=<us> MAX=<us> OVER=<n> SPEED=<x.y>% SAMPLES=<n> VIDEO=<crc> AUDIO=<crc>
+TinyGBC GB DISPLAY FB=<crc> PACE=<0|1> [SHOWN=<n> SHOW=<us> LATE=<n> PIXELS=<n> BITS=<hex>]
 ```
 
 The core is built with `VIDEO_RGB565`, its default integer (blipper) audio
@@ -30,6 +31,19 @@ resampler at 32,768 Hz, no boot ROM, and no core options, so a PC run and an
 AE350 run of the same program and cartridge produce the same `VIDEO` and
 `AUDIO` checksums. On the PC, `GB_DUMP=<dir>` also writes the CHECK frames as
 PPM.
+
+`make DISPLAY=1` builds the same benchmark with a picture: each frame is
+converted from the core's RGB565 into the video unit's 15-bit format, red in
+bits 4:0, green 9:5 and blue 14:10, and written into the SDRAM frame buffer
+the unit is not showing, which is handed over at a vertical blank. The last
+line then carries `FB`, the checksum of the converted picture, so the PC and
+the AE350 can be compared although only the AE350 has a buffer to write; on
+the AE350 it also carries `SHOWN`, the frames handed over, `SHOW`, the average
+cost of one handover, and what the video unit's `LATE`, `PIXELS` and `BITS`
+registers report. Handover happens at most once per vertical blank, because
+the harness runs at about four times the Game Boy's rate, and the picture
+settles two frames after the write. `PACE=1` adds one emulated frame per Game
+Boy frame (16,742.7 us), which is how the picture is watched.
 
 ## Building and running
 
@@ -44,6 +58,7 @@ make ROM=../../../third_party/roms/ucity.gbc        # the AE350 program
 `FRAMES=<n>`, `INPUT="<first>+<count>=<buttons> ..."` and `CHECK=<n>` are
 build-time options, and `STATE=<file>` embeds a savestate and loads it after
 the cartridge, so a run can start in the game rather than at boot.
+`DISPLAY=1` and `PACE=1` are described above.
 
 To play on the PC and take a savestate by hand:
 
@@ -81,9 +96,9 @@ tools/deploy_tinygbc.sh         # card /root/cores/console138k/tinygbc.bin, then
 
 The build needs the open flow: `~/oss-cad-suite`, nextpnr-himbaechel and a
 local Apicula. Placement decides whether the AHB bus reaches 75 MHz; seed 4 is
-the default because it measured 84.10 MHz on the bus and 101.21 on the HDMI
-pixel clock, with the pixel clock on SPINE16+SPINE25, the pair this board is
-known to run.
+the default because it measured 92.26 MHz on the bus and 101.05 on the HDMI
+pixel clock (core-log entry 5), with the pixel clock on SPINE16+SPINE25, the
+pair this board is known to run.
 
 ## Licensing
 

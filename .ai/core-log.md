@@ -247,3 +247,38 @@ The A25 still has to put a frame in a buffer: `gb_bench` converting gambatte's R
 - User Test: NOT RUN
 
 ---
+
+## 7 COMMIT Unreleased 2026-10-22T06:39:26-07:00
+
+#### Coming From:
+
+Unreleased 1f455e4
+
+#### Purpose:
+
+Give the A25 a path that puts gambatte's frame into the SDRAM frame buffer and onto HDMI, which is the picture the port has built, timed and simulated but never fed.
+
+#### Outcome:
+
+`make DISPLAY=1` builds `gb_bench` with `GB_DISPLAY`: every frame the core hands over is converted from its RGB565 into the video unit's 15-bit format, red in bits 4:0, green 9:5 and blue 14:10, which is not libretro's 0RGB1555 and would swap red with blue if written straight through, and is written into the frame buffer that `TN_VIDEO_STATUS`'s buffer bit does not name, at `TN_VIDEO_FB` with the 512-byte line stride against the core's 320-byte pitch, after which the D-cache is written back and `TN_VIDEO_CTRL` takes the enable and the buffer. Handover happens at most once per vertical blank, because the harness runs at about four times the Game Boy's frame rate and flipping faster would only discard pictures, and the picture is expected to settle two frames after the write (entry 5). The default build is untouched: it is 498,470 bytes of text, the same as entry 6's, and its PC run still ends `VIDEO=aaddaa41 AUDIO=a36b5633 SAMPLES=987948`, the checksums `tests/gb_bench_expected.txt` holds. The display build is 499,116 bytes of text and ends with a new line, `TinyGBC GB DISPLAY FB=<crc> PACE=<0|1>`, which on the AE350 also carries `SHOWN`, `SHOW`, `LATE`, `PIXELS` and `BITS`; FB is the checksum of the converted destination, so it covers what the video unit fetches and can be compared between the PC and the AE350 although only the AE350 has a buffer to write. On the PC two runs of the display build both ended `FB=d6e86438` with the core's checksums unchanged, which is recorded in `tests/gb_bench_expected.txt`, and `PACE=1` with 60 frames took 1.00 s, one emulated frame per 16.7 ms. Both AE350 builds compile with `-Wall -Wextra -Werror`. The three open nits were folded in: README now quotes seed 4's current clocks, 92.26 MHz on the bus and 101.05 on the pixel clock, `tools/build_ae350_soc.sh` says the 80.46 and 89.06 figures belong to the imported design, and `firmware/include/tinygbc.h` no longer cites a `tests/test_loader_host.py` that this tree does not have. Nothing was deployed: the user asked for deployment to wait for permission, so the board still runs the entry 6 core, which is also this cycle's core because no RTL changed. The video simulation was not re-run for that reason. The core-syntax audit re-read `.ai/core.md` and `.ai/core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `.ai/core.md` was not changed and that entries 1 to 6 were not rewritten, and validated this entry as number 7 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and only eligible paths in Files Modified.
+
+#### Next Steps:
+
+Deployment is the open step and waits on the user's permission: `tools/deploy_tinygbc.sh` then `tools/load_ae350.py --tinytang` with the display build, after which the picture is watched with `PACE=1` and measured with `DISPLAY=1` alone. The first handover is expected to be invisible because of the two-frame settle, and a black rather than a wrong-coloured picture would point at the buffer or the writeback instead of at the conversion. After that, the two channels still shaped for the NES are the core's 32,768 Hz sound against the DAC's 48,828.125 Hz, which is a resampler question in the harness rather than an I2S divisor one, and the Wii pad mapped onto gambatte's input.
+
+#### Files Modified:
+
+- README.md
+- firmware/apps/gb_bench/Makefile
+- firmware/apps/gb_bench/main.cpp
+- firmware/include/tinygbc.h
+- tests/gb_bench_expected.txt
+- tools/build_ae350_soc.sh
+
+#### Status:
+
+- Build: PASS
+- Deployment: NOT RUN
+- User Test: NOT RUN
+
+---

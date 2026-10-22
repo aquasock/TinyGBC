@@ -12,6 +12,9 @@
 #                               start, F5 saves
 #
 # FRAMES=<n>, INPUT="<script>" and CHECK=<n> replace the defaults in main.cpp.
+# DISPLAY=1 writes each frame into the video unit's frame buffer and hands it
+# over at a vertical blank; PACE=1 also runs one emulated frame per Game Boy
+# frame, so the picture can be watched. PACE implies DISPLAY.
 # The programs contain the core and are GPL-2.0
 # (third_party/gambatte-libretro/COPYING); with the cartridge image built in
 # they are for local use only.
@@ -47,6 +50,12 @@ endif
 APP_DEFS += $(if $(FRAMES),-DGB_FRAMES=$(FRAMES)) \
             $(if $(INPUT),-DGB_INPUT='"$(INPUT)"') \
             $(if $(CHECK),-DGB_CHECK=$(CHECK))
+ifneq ($(filter 1,$(DISPLAY) $(PACE)),)
+APP_DEFS += -DGB_DISPLAY
+endif
+ifeq ($(PACE),1)
+APP_DEFS += -DGB_PACE
+endif
 CPPFLAGS += $(APP_DEFS)
 
 include ../../rt/rt.mk

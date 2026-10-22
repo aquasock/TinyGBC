@@ -12,8 +12,8 @@
 #ifdef __riscv
 #define TN_REG(offset) (*(volatile uint32_t *)(0xe8000000u + (offset)))
 #else
-/* Host builds of firmware code (tests/test_loader_host.py) model the
- * registers, the cache controls and the cycle counter themselves. */
+/* Host builds of firmware code model the registers, the cache controls and
+ * the cycle counter themselves. */
 volatile uint32_t *tn_host_reg(uint32_t offset);
 #define TN_REG(offset) (*tn_host_reg(offset))
 #endif

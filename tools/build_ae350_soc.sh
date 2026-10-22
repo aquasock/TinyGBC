@@ -27,7 +27,10 @@ family=GW5AST-138C
 # seed 11, TinyNES's pick for its own tree, failed here at 72.15 MHz on
 # bus_clk, while seeds 2 to 7 were clean. Seed 4 had the best bus margin,
 # 80.46 MHz against 75 with the HDMI pixel clock at 89.06 against 74.25, and
-# no clean seed reported a hold violation. Seed 4 is the default here.
+# no clean seed reported a hold violation. Those are the imported design's
+# figures: the retargeted video unit then reached 84.10 and 101.21 at seed 4
+# (core-log entry 4) and 92.26 and 101.05 once its fetch port was widened
+# (entry 5). Seed 4 is the default here.
 seed="${TINYGBC_SEED:-4}"
 
 [[ -f "$suite/environment" ]] || { echo "missing open toolchain: $suite" >&2; exit 2; }

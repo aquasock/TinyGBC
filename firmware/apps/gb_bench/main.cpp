@@ -20,6 +20,20 @@
 //   TinyGBC GB F=<frame> AVG=<us> MAX=<us> VIDEO=<crc> AUDIO=<crc>
 //   TinyGBC GB FRAMES=<n> AVG=<us> MIN=<us> MAX=<us> OVER=<n> SPEED=<x.y>%
 //       SAMPLES=<n> VIDEO=<crc> AUDIO=<crc>
+//   TinyGBC GB DISPLAY FB=<crc> PACE=<0|1> [SHOWN=<n> SHOW=<us> LATE=<n>
+//       PIXELS=<n> BITS=<hex>]
+//
+// The DISPLAY line appears only in a GB_DISPLAY build (make DISPLAY=1),
+// which converts each frame out of the core's RGB565 into the video unit's
+// 15-bit format and writes it into the frame buffer the unit is not showing,
+// handing that buffer over at a vertical blank. FB is the checksum of the
+// converted picture, so a PC run and an AE350 run can be held against each
+// other although only the AE350 has a buffer to write; the fields after it
+// exist only there, SHOWN being how many frames were handed over, SHOW the
+// average cost of one handover, and LATE, PIXELS and BITS what the video
+// unit's own registers report after the run. GB_PACE (make PACE=1) also
+// runs one emulated frame per Game Boy frame, which is how the picture is
+// watched at the rate the game runs.
 //
 // CGB is the cartridge header's CGB flag byte ($0143), which tells whether the
 // image asks for a Color Game Boy; it is not a report of whether the game
@@ -59,6 +73,10 @@ extern "C" const unsigned char gb_state[], gb_state_end[];
 #endif
 #ifndef GB_CHECK
 #define GB_CHECK 30
+#endif
+
+#if defined(GB_PACE) && !defined(GB_DISPLAY)
+#error GB_PACE needs GB_DISPLAY
 #endif
 
 namespace {
@@ -199,6 +217,48 @@ const char *dump_dir;
 		}
 	}
 	fclose(f);
+}
+#endif
+
+#ifdef GB_DISPLAY
+/* The picture the video unit shows is 160x144 of 15 bits per pixel with red
+ * in bits 4:0, green 9:5 and blue 14:10 (fpga/ae350_soc/video.sv). gambatte
+ * hands over RGB565, so each pixel loses its green low bit and its red and
+ * green fields move; note that libretro's own 0RGB1555 puts red at 14:10 and
+ * blue at 4:0, the other way round, so writing that format straight through
+ * would show blue where red belongs. */
+[[maybe_unused]] uint16_t display_pixel(uint16_t c)
+{
+	return (uint16_t)((c >> 11) | (((c >> 6) & 0x1fu) << 5) |
+			  ((c & 0x1fu) << 10));
+}
+
+#ifndef __riscv
+/* The PC has no frame buffer; the conversion is done into this so that its
+ * checksum can be compared with the AE350's. */
+uint16_t display_fb[160 * 144];
+#endif
+
+/* Convert one frame into dst, whose pixels are stride apart, and fold the
+ * converted pixels into crc when asked. The checksum is taken from the
+ * destination, so on the AE350 it covers what the video unit will fetch. */
+[[maybe_unused]] uint32_t display_convert(const void *ptr, unsigned w,
+					  unsigned h, size_t pitch, uint16_t *dst,
+					  size_t stride, uint32_t crc, bool want_crc)
+{
+	const uint8_t *src = static_cast<const uint8_t *>(ptr);
+
+	for (unsigned y = 0; y < h; y++) {
+		const uint16_t *row =
+			reinterpret_cast<const uint16_t *>(src + y * pitch);
+		uint16_t *out = dst + y * stride;
+
+		for (unsigned x = 0; x < w; x++)
+			out[x] = display_pixel(row[x]);
+		if (want_crc)
+			crc = crc_update(crc, out, w * sizeof(uint16_t));
+	}
+	return crc;
 }
 #endif
 
@@ -561,6 +621,14 @@ int main()
 	uint64_t total_us = 0, min_us = ~0ull, max_us = 0;
 	uint64_t total_samples = 0;
 	unsigned over = 0;
+#ifdef GB_DISPLAY
+	uint32_t fb_crc = 0;
+#if defined(__riscv)
+	uint64_t show_us = 0;
+	unsigned shown = 0;
+	uint32_t last_vblank = TN_VIDEO_FRAMES;
+#endif
+#endif
 
 	/* Frames since the last F= line. */
 	uint64_t iv_us = 0, iv_max = 0;
@@ -584,6 +652,41 @@ int main()
 			dump_frame(f, frame_ptr, frame_w, frame_h, frame_pitch);
 #endif
 		}
+#ifdef GB_DISPLAY
+		if (frame_ptr) {
+#if defined(__riscv)
+			/* The buffer STATUS names is the one being fetched, so the other
+			 * one is free to write. */
+			const unsigned target =
+				(TN_VIDEO_STATUS & TN_VIDEO_BUFFER) ? 0u : 1u;
+			uint16_t *dst = reinterpret_cast<uint16_t *>(
+				TN_VIDEO_FB(target));
+			const size_t stride =
+				TN_VIDEO_FB_STRIDE / TN_VIDEO_PIXEL_BYTES;
+			uint64_t s0 = ticks();
+#else
+			uint16_t *dst = display_fb;
+			const size_t stride = frame_w;
+#endif
+			fb_crc = display_convert(frame_ptr, frame_w, frame_h,
+						 frame_pitch, dst, stride, fb_crc,
+						 f % GB_CHECK == 0);
+#if defined(__riscv)
+			/* One handover a vertical blank at most: the harness runs at
+			 * about four times the Game Boy's rate, so flipping every frame
+			 * would only throw pictures away. The picture settles two frames
+			 * after the write (core-log entry 5). */
+			if (TN_VIDEO_FRAMES != last_vblank) {
+				last_vblank = TN_VIDEO_FRAMES;
+				tn_dcache_wbinval();
+				TN_VIDEO_CTRL = TN_VIDEO_ENABLE |
+						(target ? TN_VIDEO_BUFFER : 0u);
+				shown++;
+				show_us += to_us(ticks() - s0);
+			}
+#endif
+		}
+#endif
 		if (audio_copy_frames)
 			audio_crc = crc_update(audio_crc, audio_copy,
 					       audio_copy_frames * 2 * sizeof(int16_t));
@@ -600,6 +703,13 @@ int main()
 		if (d > iv_max)
 			iv_max = d;
 		iv_frames++;
+
+#ifdef GB_PACE
+		/* One emulated frame per Game Boy frame, so the picture can be
+		 * watched at the rate the game runs. */
+		while (to_us(ticks() - a) < period_us)
+			;
+#endif
 
 		if (iv_frames == GB_CHECK) {
 			printf("TinyGBC GB F=%u AVG=%u MAX=%u VIDEO=%08x AUDIO=%08x\n",
@@ -623,6 +733,22 @@ int main()
 	       frames, (unsigned)avg, (unsigned)min_us, (unsigned)max_us, over,
 	       speed_x10 / 10, speed_x10 % 10, (unsigned)total_samples,
 	       (unsigned)video_crc, (unsigned)audio_crc);
+
+#ifdef GB_DISPLAY
+	printf("TinyGBC GB DISPLAY FB=%08x", (unsigned)fb_crc);
+#ifdef GB_PACE
+	printf(" PACE=1");
+#else
+	printf(" PACE=0");
+#endif
+#if defined(__riscv)
+	printf(" SHOWN=%u SHOW=%u LATE=%u PIXELS=%u BITS=%04x", shown,
+	       shown ? (unsigned)(show_us / shown) : 0u,
+	       (unsigned)TN_VIDEO_LATE, (unsigned)TN_VIDEO_PIXELS,
+	       (unsigned)TN_VIDEO_BITS);
+#endif
+	printf("\n");
+#endif
 
 	return 0;
 #endif
