@@ -3,10 +3,12 @@
 A Game Boy Color port in the form TinyNES took: gambatte on the AE350 inside
 the Tang Console 138K.
 
-**Status: feasibility cycle, not a port yet.** There is no FPGA work in this
-tree and no picture. What exists is `gb_bench`, the harness that answers the
-one question the port depends on: can the A25 run gambatte fast enough for a
-Color Game Boy game at 59.7275 frames a second?
+**Status: the emulator is measured and the video unit is retargeted, but
+nothing has been shown on a screen yet.** `gb_bench` answers whether the A25
+can run gambatte fast enough; `fpga/ae350_soc` is TinyNES's AE350 SoC brought
+into this tree and changed to draw a 160x144 Game Boy frame instead of the
+NES's 256x240. The A25 does not yet write frames into the frame buffer, so the
+picture path is built and timed but not exercised.
 
 ## gb_bench
 
@@ -55,6 +57,29 @@ Select, `F5` to save and `Esc` to quit. It writes `gb_play.state` on a save,
 on `SIGUSR1`, on a signal and on exit, and a rolling `gb_play.state.auto`
 every 600 frames. The A25 program needs the AE350 SoC bitstream and the
 boot ROM's loader, which are TinyNES's until this tree has its own.
+
+## fpga/ae350_soc
+
+The SoC is TinyNES's, imported whole: the AE350, its SDRAM and block RAM, the
+UART, the desk layer, the Wii pad buses, the I2S output and the hdl-util HDMI
+transmitter. The video unit is the part that is now TinyGBC's own: two 160x144
+frame buffers of 15-bit RGB555 in the top 256 KiB of the SDRAM, a line at
+`FB(b) + 512 * y` and a pixel at `2 * x`, each Game Boy pixel drawn five rows
+tall and five columns wide for the authentic 800x720 picture, or six columns
+wide for 960 at 4:3. The palette and emphasis stores remain in the register
+map but the picture no longer reads them.
+
+```
+tools/build_ae350_soc.sh        # synthesise, place, route and pack
+tools/build_ae350_soc.sh        # writes build/ae350_soc/ae350_soc.{fs,bin}
+python3 tools/sweep.py ae350_soc --seeds 1-8
+```
+
+The build needs the open flow: `~/oss-cad-suite`, nextpnr-himbaechel and a
+local Apicula. Placement decides whether the AHB bus reaches 75 MHz; seed 4 is
+the default because it measured 84.10 MHz on the bus and 101.21 on the HDMI
+pixel clock, with the pixel clock on SPINE16+SPINE25, the pair this board is
+known to run.
 
 ## Licensing
 

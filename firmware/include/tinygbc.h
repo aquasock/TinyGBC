@@ -50,13 +50,13 @@ volatile uint32_t *tn_host_reg(uint32_t offset);
 #define TN_LINK_FRAMES(s)  (((s) >> 8) & 0xffu)
 #define TN_LINK_CELLS(s)   ((s) >> 16)
 
-/* HDMI video (fpga/ae350_soc/video.sv): 1280x720 60 Hz showing a 256x240
- * frame buffer at 3x, or fabric colour bars until TN_VIDEO_ENABLE is set.
+/* HDMI video (fpga/ae350_soc/video.sv): 1280x720 60 Hz showing a 160x144
+ * frame buffer at 5x, or fabric colour bars until TN_VIDEO_ENABLE is set.
  * CTRL changes take effect at the next vertical blank; STATUS reports what
- * is being shown. Palette and emphasis are write-only; the palette index of
- * a pixel is the pixel itself when its line's emphasis is 0, else 256 +
- * emphasis * 64 + (pixel & 63). The two frame buffers are the top 128 KiB
- * of the SDRAM, pixel (x, y) at TN_VIDEO_FB(b) + 256 * y + x, written
+ * is being shown. A pixel is 16 bits of RGB555, red in bits 4:0, green in
+ * 9:5 and blue in 14:10. The two frame buffers are the top 256 KiB of the
+ * SDRAM, line y at TN_VIDEO_FB(b) + 512 * y and pixel (x, y) at 2 * x inside
+ * its line, written
  * through the D-cache: write the D-cache back (tn_dcache_wbinval) before
  * asking for a buffer to be shown. Programs must not use that memory. */
 #define TN_VIDEO_CTRL    TN_REG(0x10000) /* read and write */
@@ -70,20 +70,22 @@ volatile uint32_t *tn_host_reg(uint32_t offset);
 #define TN_VIDEO_LB(i)   TN_REG(0x10800 + 4 * (i)) /* read: line-buffer halfword */
 #define TN_VIDEO_PALETTE(i)     TN_REG(0x11000 + 4 * (i)) /* 0xRRGGBB */
 #define TN_VIDEO_EMPHASIS(b, y) TN_REG(0x12000 + 4 * (256 * (b) + (y)))
-#define TN_VIDEO_FB_BASE  0x41fe0000u
-#define TN_VIDEO_FB_BYTES (128u << 10)
-#define TN_VIDEO_FB(b) ((uint8_t *)(TN_VIDEO_FB_BASE + 0x10000u * (b)))
+#define TN_VIDEO_FB_BASE  0x41fc0000u
+#define TN_VIDEO_FB_BYTES (256u << 10)
+#define TN_VIDEO_FB(b) ((uint8_t *)(TN_VIDEO_FB_BASE + 0x20000u * (b)))
+#define TN_VIDEO_FB_STRIDE 512u /* bytes per line */
+#define TN_VIDEO_PIXEL_BYTES 2u /* RGB555, red 4:0, green 9:5, blue 14:10 */
 
 #define TN_VIDEO_ENABLE    0x1u /* CTRL: show the frame buffers */
 #define TN_VIDEO_BUFFER    0x2u /* CTRL: the buffer to show (STATUS: shown) */
 #define TN_VIDEO_VBLANK    0x1u /* STATUS */
 #define TN_VIDEO_SHOWING   0x4u /* STATUS: the frame buffers are shown */
 #define TN_VIDEO_ID_VALUE  0x544e5631u /* "TNV1" */
-#define TN_VIDEO_ASPECT_8_7 0u /* ASPECT: the authentic pixel aspect, 878 columns */
-#define TN_VIDEO_ASPECT_1_1 1u /* ASPECT: square pixels, 768, the reset value */
-#define TN_VIDEO_ASPECT_4_3 2u /* ASPECT: stretched to the television frame, 960 */
-#define TN_VIDEO_WIDTH     256u
-#define TN_VIDEO_HEIGHT    240u
+#define TN_VIDEO_ASPECT_8_7 0u /* ASPECT: 800 columns, as square pixels */
+#define TN_VIDEO_ASPECT_1_1 1u /* ASPECT: 800 columns, square pixels, the reset value */
+#define TN_VIDEO_ASPECT_4_3 2u /* ASPECT: 960 columns, stretched to the television frame */
+#define TN_VIDEO_WIDTH     160u
+#define TN_VIDEO_HEIGHT    144u
 #define TN_VIDEO_PALETTE_SIZE 768u
 
 /* Wii Classic Controller inputs on PMOD0. Four separate I2C buses run in

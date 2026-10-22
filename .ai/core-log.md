@@ -108,3 +108,70 @@ Player control is now measured, so the remaining unknown in the throughput quest
 - User Test: NOT RUN
 
 ---
+## 4 COMMIT Unreleased 2026-10-21T21:14:25-07:00
+
+#### Coming From:
+
+Unreleased 0dd2625
+
+#### Purpose:
+
+Bring the AE350 SoC into this tree and retarget its video unit from the NES's 256x240 indexed picture to the Game Boy's 160x144 frame in 15-bit colour, so that the port stops borrowing another tree's gateware.
+
+#### Outcome:
+
+`fpga/ae350_soc` and `fpga/hdmi` are TinyNES's, imported whole with `firmware/boot` and the build tools that drive them, and the rename that follows from no longer sharing a header is `tinynes.h` to `tinygbc.h` in the boot ROM, the runtime and `memtest.c`, with the build script's `TINY_NES_*` environment variables becoming `TINYGBC_*`. The first build showed that TinyNES's seed does not transfer: seed 11, which is TinyNES's pick for its own tree, failed here at 72.15 MHz on the AHB bus, so a sweep of seeds 1 to 8 ran, of which seed 1 failed at 74.04 and seeds 2, 3, 5, 6 and 7 were clean between 76.68 and 80.46 MHz with the HDMI pixel clock between 81.74 and 89.06, and no clean seed reported a hold violation; seed 4 had the best bus margin at 80.46 and became the default. The video unit is the part that is now TinyGBC's own. Two 160x144 frame buffers of RGB555 sit in the top 256 KiB of the SDRAM, line y at `FB(b) + 512 * y` and pixel (x, y) at `2 * x`, one 16-bit word per pixel with red in bits 4:0, green in 9:5 and blue in 14:10; the line buffer doubled to 512 halfwords and is indexed by pixel rather than by pair; the SDRAM video channel fetches 160 halfwords a line instead of 128, so `vindex` in `ahb_sdram.sv` widened to eight bits and `vdone` fires at 159; and the scaler now draws each Game Boy pixel five rows tall and five columns wide for an exact 800x720 picture, or six columns for 960 at 4:3, with the 8:7 setting collapsing onto 1:1 because the Game Boy's pixels are square. The palette and emphasis stores stay in the register map but the picture reads neither, so `rgb3` is `rgb15` of the frame-buffer word and the diagnostics lost the emphasis index. `firmware/rt/link.ld` keeps the heap below the top 256 KiB instead of 128, and `tinygbc.h` publishes the new base, stride and pixel size. With seed 4 the retargeted design places and routes at 84.10 MHz on the bus and 101.21 MHz on the pixel clock, both better than the imported design's 80.46 and 89.06 because the palette and emphasis block RAMs left the video unit; the AE350's dedicated PLL hop is present, all ten of the video unit's block RAMs are on one clock each, and the pixel clock landed on SPINE16 and SPINE25, the pair this board is known to run. The bitstream packs to 4,666,860 bytes with SHA-256 `66f960f020d4a22336941fa29aeb842361e4faac73311953bf5cb62cee90846d`, 79,360 bytes smaller than the NES image it descends from. Nothing was loaded onto the board, by the user's instruction, and nothing was simulated: this entry establishes that the retargeted unit synthesises, meets both clocks and packs onto the part, not that it draws a Game Boy frame, and the A25 still has no code that writes one. Two inherited names remain in the boot ROM and the runtime, `TinyNES LOAD` and `TinyNES EXIT`, because `tools/load_ae350.py` looks for them. The core-syntax audit re-read `.ai/core.md` and `.ai/core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `.ai/core.md` was not changed and that entries 1 to 3 were not rewritten, and validated this entry as number 4 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and only eligible paths in Files Modified.
+
+#### Next Steps:
+
+The picture needs two things before it can be called working: a way to write frames into it from the A25, which is `gb_bench` converting gambatte's RGB565 output to RGB555 into the frame buffer not being shown and handing it over at the vertical blank, exactly as `nes_bench` does for FCEUmm; and a simulation of the retargeted unit that drives a known frame through the fetch handshake and checks the colours that reach the RGB output, since the build proves only that it synthesises and times. After those, deploying is a `tangload` and a run of the same benchmark, whose checksums already match the PC's, so any picture difference is the video unit's. The audio rate and the Wii pad mapping are still NES-shaped and remain their own cycles.
+
+#### Files Modified:
+
+- README.md
+- firmware/boot/Makefile
+- firmware/boot/crt0.S
+- firmware/boot/link.ld
+- firmware/boot/load.c
+- firmware/boot/load.h
+- firmware/boot/main.c
+- firmware/common/memtest.c
+- firmware/common/memtest.h
+- firmware/include/tinygbc.h
+- firmware/rt/link.ld
+- fpga/ae350_soc/ae350_soc.cst
+- fpga/ae350_soc/ae350_soc.sdc
+- fpga/ae350_soc/ae350_soc.sv
+- fpga/ae350_soc/ahb_boot_rom.sv
+- fpga/ae350_soc/ahb_ram.sv
+- fpga/ae350_soc/ahb_sdram.sv
+- fpga/ae350_soc/desk_font.hex
+- fpga/ae350_soc/desk_link.sv
+- fpga/ae350_soc/exts_uart.sv
+- fpga/ae350_soc/i2s_out.sv
+- fpga/ae350_soc/video.sv
+- fpga/ae350_soc/wii_pads.sv
+- fpga/hdmi/LICENSE-MIT
+- fpga/hdmi/audio_clock_regeneration_packet.sv
+- fpga/hdmi/audio_info_frame.sv
+- fpga/hdmi/audio_sample_packet.sv
+- fpga/hdmi/auxiliary_video_information_info_frame.sv
+- fpga/hdmi/hdmi.sv
+- fpga/hdmi/hdmi_silent.sv
+- fpga/hdmi/packet_assembler.sv
+- fpga/hdmi/packet_picker.sv
+- fpga/hdmi/serializer.sv
+- fpga/hdmi/source_product_description_info_frame.sv
+- fpga/hdmi/tmds_channel.sv
+- tools/build_ae350_soc.sh
+- tools/designs/ae350_soc.json
+- tools/fs_to_bin.py
+- tools/sweep.py
+
+#### Status:
+
+- Build: PASS
+- Deployment: NOT RUN
+- User Test: NOT RUN
+
+---
