@@ -408,3 +408,33 @@ None.
 - User Test: PASS
 
 ---
+
+## 12 COMMIT Unreleased 2026-10-22T07:43:20-07:00
+
+#### Coming From:
+
+Unreleased f05d1fc
+
+#### Purpose:
+
+Record what Adafruit's Wii breakout adapter does in the pad path, before the pad cycle is built on it.
+
+#### Outcome:
+
+The reference library gained WII-002, with a fast-index line and a routing row: Adafruit's Wii Nunchuck Breakout Adapter (4836) takes VIN as both supply and logic reference, so it is fed the host's logic voltage, gives a regulated 3.3 V output good for 100 mA, level shifts SCL and SDA for 3 to 5 V logic with a 10 kOhm pull-up on each, and keeps the controller's fixed 0x52 address; a Classic Controller uses the same connector and protocol as a Nunchuck. The record also settles the CYBERDECK question the user raised: the Cyberdeck is a Raspberry Pi HAT whose STEMMA ports are on the Pi's SDA and SCL nets, and the 40-pin header it presents must not be mated to this board's 2x20 headers, which are the SDRAM connectors of BRD-008. On the board side the adapter needs nothing from the fabric: this tree's SoC already reads four I2C pairs on PMOD0, SCL on Digilent pins 1 to 4 and SDA on 7 to 10, each LVCMOS33 with the pin pulled up, and its outputs only pull low; the adapter's own 10 kOhm pull-ups sit on the host side. The user reported connecting the adapter to a PMOD socket with a Classic Controller and running TinyNES, whose fabric reads the same pads through the same pins, with the controller working, so the path is confirmed on this hardware even though this tree's own core has not read it yet. No engineering file changed. The core-syntax audit re-read `.ai/core.md` and `.ai/core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `.ai/core.md` was not changed and that entries 1 to 11 were not rewritten, and validated this entry as number 12 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and `None.` in Files Modified.
+
+#### Next Steps:
+
+The pad cycle is firmware only, because the fabric already speaks the controller's protocol and the adapter changes nothing electrically: `gb_bench` polls PMOD0's first bus, answers gambatte's input from it with the scripted table kept as the reproducible fallback, and adds an AE350 `PLAY=1` build that runs until HOME and SELECT are held, keeping the picture paced and the sound playing so the game can be played rather than scripted. The first check on hardware is the pad's own identity register, since that is what says the controller was found through the adapter.
+
+#### Files Modified:
+
+None.
+
+#### Status:
+
+- Build: N/A
+- Deployment: N/A
+- User Test: N/A
+
+---

@@ -307,6 +307,7 @@ Topic IDs are the `record_id` prefix. An entry reserves a name; it does not clai
 | How does FCEUmm's picture reach HDMI, and how fast does the game run with it? | EMU | EMU-004, EMU-006 |
 | How is FCEUmm played with Wii Classic Controllers, and how fast does it run under play? | EMU | EMU-005 |
 | How is a Wii Classic Controller initialized and read over I2C? | WII | WII-001 |
+| Can Adafruit's Wii breakout adapter sit between a controller and a PMOD socket, and what about the CYBERDECK HAT? | WII | WII-002 |
 | Which PMOD0 pins are used for four Wii extension buses? | PMOD | PMOD-007 |
 | Which PMOD1 pins carry the Pmod I2S2's DAC? | PMOD | PMOD-008 |
 | Which clocks and sample rates does the I2S2's CS4344 accept, and how does TinyNES clock it? | AUD | AUD-001 |
@@ -506,6 +507,7 @@ EMU-006: "FCEUI_Initialize clears FSettings, leaving the five APU channel volume
 EMU-007: "AccuracyCoin on FCEUmm ac0d00a under nes_bench: 84 of 146 with page 19 skipped, 83 with only its Misaligned OAM Behavior skipped, which hangs; TinyNES's seven patches and the Four Score turned off raise that to 90, the user saw 90 on the board, and the A25 benchmark slows from 10.93 to 11.08 ms a frame with identical checksums"
 EMU-008: "Zelda II's title screen polls $2002 about 1,900 times a frame and FCEUmm rebuilt a 256-entry palette table on each resulting partial-line render, so its intro took 17.45 ms a frame on the A25 (1,690 of 1,800 frames over 16.64 ms); patch 0008 rebuilds the table only when its 16 palette bytes change, giving 9.95 ms, and Castlevania's benchmark 9.03 ms, with identical checksums"
 WII-001: "Wii extensions use I2C address 0x52; write F0=55 then FB=00 to disable encryption, read six identity bytes at FA and six format-1 data bytes after setting pointer 00; NintendoExtensionCtrl waits 10 ms, 20 ms and 175 us at those steps and accepts Classic IDs 00/01 00 A4 20 00..03 01; buttons in bytes 4-5 are active low"
+WII-002: "Adafruit's Wii Nunchuck Breakout Adapter (4836) takes VIN as the logic reference and level-shifts SCL/SDA for 3-5 V with a 10K pull-up on each, address fixed at 0x52, and works on a PMOD0 I2C pair at 3.3 V; Adafruit's CYBERDECK HAT is a Raspberry Pi HAT and must not be mated to this board's 2x20 SDRAM headers"
 AUD-001: "The CS4344 takes a 256x MCLK at 2 to 50 kHz (MCLK 0.512 to 50 MHz, 45 to 55 percent duty) in I2S, with MCLK, SCLK and LRCK synchronous but no phase set; TinyNES counts all three from the 75 MHz bus clock, MCLK 12.5 MHz, Fs 48,828.125 Hz, measured 48,827.968 Hz on the board"
 LORA-001: "The REYAX RYLR998 (UPC 612789267033) is a five-pin 3.3 V UART LoRa module, AT-command controlled, 820 to 960 MHz, -20 to +22 dBm out, -129 dBm sensitivity, 140 mA transmitting at +22 dBm; RYLR998_M4 has an I-PEX MHF4 connector instead of the built-in antenna; not fitted or tested here"
 ```
@@ -2891,6 +2893,20 @@ Records are grouped in the order of the topic catalog, and numbered within each 
     - "WiiBrew Wiimote/Extension Controllers/Classic Controller, Data Format 0x01: https://wiibrew.org/wiki/Wiimote/Extension_Controllers/Classic_Controller"
     - "dmadison/NintendoExtensionCtrl 2bec2355c85e5cae2d159182d1982e59de707ec0, src/internal/ExtensionController.cpp initialize and requestControlData, src/internal/NXC_Comms.h I2C_ConversionDelay, src/internal/ExtensionController.h I2C_Addr, src/internal/NXC_Identity.h decodeIdentity and examples/Any/SpeedTest/SpeedTest.ino"
   verification: "The cited WiiBrew records and exact library commit were read on 2026-10-12. tests/wii_pads_tb.sv models the transactions and passed. Revised 2026-10-13 (core-log entry 16): on this board the unencrypted initialization returned Classic Controller Pro ID 01 00 A4 20 01 01 and PAD1 reported changing active-low buttons, both sticks and both triggers at the default 100-kHz setting, with zero PAD1 failures; the user confirmed the values matched the controller actions."
+
+- record_id: WII-002
+  kind: EXTERNAL
+  topic_id: WII
+  title: "Adafruit's Wii Nunchuck Breakout Adapter between a controller and a PMOD socket"
+  status: VERIFIED
+  verified_date: 2026-10-22
+  statement: "Adafruit's Wii Nunchuck Breakout Adapter (product 4836) takes a Wii extension controller's connector and exposes its I2C on a STEMMA QT/Qwiic JST-SH socket. VIN is the power pin and the logic reference, so it is given the host's logic voltage (5 V for an Arduino, 3.3 V for a Pi or Feather); 3V is a regulated 3.3 V output good for 100 mA; SCL and SDA are level shifted for 3 to 5 V logic with a 10 kOhm pull-up on each; the controller's address is fixed at 0x52. The adapter also performs the power regulation the controller needs, and a Classic Controller uses the same connector and protocol as a Nunchuck."
+  consequence: "This board's PMOD sockets are a safe host: 3.3 V feeds VIN, ground feeds GND, and one of PMOD0's four I2C pairs carries SCL and SDA (fpga/ae350_soc/ae350_soc.cst: Digilent pins 1 to 4 are SCL on V18, G21, F18 and C22, 7 to 10 are SDA on V19, G22, E18 and B22, all LVCMOS33 with PULL_MODE=UP). The fabric needs no change for the adapter: its I2C outputs only pull low, and the adapter's 10 kOhm pull-ups sit on the host side. Adafruit's CYBERDECK HAT is not part of this path even though its STEMMA ports carry the same four signals: it is a Raspberry Pi HAT, its STEMMA ports are on the Pi's SDA and SCL, and the 40-pin header it presents must not be mated to this board's 2x20 headers, which are the SDRAM connectors (BRD-008)."
+  sources:
+    - "Adafruit Wii Nunchuck Breakout Adapter, product 4836, https://www.adafruit.com/product/4836, and its Pinouts page https://learn.adafruit.com/adafruit-wii-nunchuck-breakout-adapter/pinouts: VIN, 3V at 100 mA, SCL and SDA level shifted for 3-5 V logic with 10K pull-ups, address 0x52 (fetched 2026-10-22)"
+    - "Adafruit CYBERDECK-PCB README.md (the board is a CYBERDECK HAT and Bonnet for Raspberry Pi 400) and Adafruit CyberDeck HAT.sch, whose CONN1 and CONN3 are STEMMA_I2C QT parts on the SDA, SCL, 3.3V and GND nets"
+    - "This project's fpga/ae350_soc/ae350_soc.cst (PMOD0 I2C pairs) and fpga/ae350_soc/wii_pads.sv"
+  verification: "The adapter's figures were read from Adafruit's documentation on 2026-10-22. On this board the user connected the adapter to a PMOD socket with a Classic Controller and ran TinyNES, whose fabric reads the same pads through the same pins, and reported the controller working, so the path through the adapter is confirmed on this hardware; it has not yet been read through this tree's own core."
 
 - record_id: AUD-001
   kind: EXTERNAL
