@@ -1,14 +1,14 @@
 /* SPDX-License-Identifier: MIT
  *
- * TinyNES AE350 boot ROM program. It checks the fabric registers in the EXTS
+ * TinyGBC AE350 boot ROM program. It checks the fabric registers in the EXTS
  * window and tests the block RAM and the SDRAM on the RAM port with the A25
  * caches off and then on, leaves the caches on, and then waits for a program
  * on the UART (the load protocol in tinygbc.h), reporting once a second until
  * one starts to arrive:
  *
- *   TinyNES AE350 C OK UNC=<cycles> CAC=<cycles>
- *   TinyNES SDRAM OK 32M
- *   TinyNES LOAD
+ *   TinyGBC AE350 C OK UNC=<cycles> CAC=<cycles>
+ *   TinyGBC SDRAM OK 32M
+ *   TinyGBC LOAD
  *
  * UNC and CAC are the core cycles (hex) each block RAM test took. The SDRAM
  * check covers the byte lanes, cached and not, and every address line; the
@@ -78,7 +78,7 @@ int main(void)
 	/* A program that left the UART in link mode restarts the ROM; its
 	 * last text is sent before this write completes. */
 	TN_UART_CTRL = 0;
-	tn_put_str("\r\nTinyNES AE350 boot ROM\r\n");
+	tn_put_str("\r\nTinyGBC AE350 boot ROM\r\n");
 	test_registers(&regs);
 
 	start = tn_cycles();
@@ -115,11 +115,11 @@ int main(void)
 			wait_cycles(TN_CORE_HZ);
 			continue;
 		}
-		tn_put_str("TinyNES AE350 C OK UNC=");
+		tn_put_str("TinyGBC AE350 C OK UNC=");
 		tn_put_hex(uncached_cycles);
 		tn_put_str(" CAC=");
 		tn_put_hex(cached_cycles);
-		tn_put_str("\r\nTinyNES SDRAM OK 32M\r\nTinyNES LOAD\r\n");
+		tn_put_str("\r\nTinyGBC SDRAM OK 32M\r\nTinyGBC LOAD\r\n");
 		entry = tn_load_poll(TN_CORE_HZ);
 		if (entry) {
 			__asm__ volatile("fence.i" ::: "memory");

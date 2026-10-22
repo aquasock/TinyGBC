@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 #
-# TinyNES AE350 boot ROM program.
+# TinyGBC AE350 boot ROM program.
 #
 #   make                  build $(BUILD)/boot.hex
 #   make BUILD=<dir>      choose the output directory

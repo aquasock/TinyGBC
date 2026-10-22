@@ -65,8 +65,9 @@
 // cell store and the font are kept, as palette writes are.
 module video #(
     parameter [31:0] ID_VALUE = 32'h544e5631, // "TNV1"
-    // Frame buffer 0's SDRAM byte address, bits 24:17 (bits 16:0 are 0):
-    // the top 128 KiB of the 32 MiB.
+    // Frame buffer 0's SDRAM byte address, bits 24:18 (bits 17:0 are 0), so
+    // 0x41FC0000: the lower of the two 128 KiB buffers that make up the top
+    // 256 KiB of the 32 MiB.
     parameter [24:18] FB_BASE = 7'h7f,
     // Diagnostic: colour each pixel from its palette index, not the palette.
     parameter DEBUG_INDEX = 0,

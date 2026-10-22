@@ -206,3 +206,44 @@ The A25 needs to put a frame in the buffer: `gb_bench` converting gambatte's RGB
 - User Test: NOT RUN
 
 ---
+
+## 6 COMMIT Unreleased 2026-10-22T06:33:09-07:00
+
+#### Coming From:
+
+Unreleased db9db2a
+
+#### Purpose:
+
+Close the five discrepancies entry 5 left open in this tree's naming, records, comments and deployment path, so the next cycle starts from a tree that describes itself accurately.
+
+#### Outcome:
+
+The boot ROM and the runtime stopped borrowing TinyNES's names: `firmware/boot/main.c` prints `TinyGBC AE350 boot ROM`, `TinyGBC AE350 C OK`, `TinyGBC SDRAM OK 32M` and `TinyGBC LOAD`, `firmware/boot/load.c` prints `TinyGBC RUN`, and `firmware/rt/syscalls.c` prints `TinyGBC EXIT`, with `tools/load_ae350.py`'s waits, expectations, WANT and LINK recognition and docstrings following, `firmware/boot/load.h`'s include guard renamed, and README no longer claiming the boot ROM is TinyNES's. `fpga/ae350_soc/video.sv`'s `FB_BASE` comment now states what the parameter is, bits 24:18 holding 0x41fc0000, the lower of the two 128 KiB buffers that make up the top 256 KiB of the SDRAM, instead of naming bits 24:17 and the top 128 KiB. `tools/deploy_tinygbc.sh` is new and is the deployment path this tree lacked: it repacks the `.fs` with `tools/fs_to_bin.py` and compares the result with the `.bin` byte for byte rather than by size, because the `.fs` carries a comment header and is not eight times its own data; it finds TinyTang's host tools in `$TINYTANG_TOOLS`, `~/.copilot/repos/TinyTang/tools` or `~/GIT/TinyTang/tools`, sends the image with `tinytang_put.py` to `/root/cores/console138k/tinygbc.bin`, drops the desk layer, runs `tangload` and requires the line `tangload: core loaded`. The boot ROM built to 2,646 bytes of text and `gb_bench` to 498,470 of text, 22,220 of data and 82,488 of bss. With seed 4 the SoC places and routes as entry 5 left it, 92.26 MHz on the bus and 101.05 on the pixel clock, ten video block RAMs each on one clock and the pixel clock through SPINE16 and SPINE25, and packs to a 38,125,541-byte `.fs` with SHA-256 `71e2b03a2eca4ca030091f951b54e872b96e6ebcca11df8a98e22edccfca8067` and a 4,762,092-byte `.bin` with `a2a334cf14374870ff0737661f3db31ebc25b14bd6f53100ddb5c3e601e5a3b1`; `tools/sim_video_gb.sh` still passes eleven checks with no failure over 144 fetches. Deployment ran on the board in two-wire mode, after one attempt found no `/dev/ttyACM0` because the console had re-enumerated and the user reconnected it: `tangput` wrote 4,762,092 bytes and `tangload` reported `ID=0001081b` and `core loaded`. `tools/load_ae350.py --tinytang` then loaded `gb_bench` in 2.79 s at 186.4 KB/s, the ROM printed `TinyGBC AE350 C OK UNC=0491cd60 CAC=001f6b4a`, `TinyGBC SDRAM OK 32M`, `TinyGBC LOAD` and `TinyGBC RUN 40000000`, the benchmark ran 1,800 frames averaging 4,086 us with a 7,332 us maximum, no frame over, 409.7 percent and 987,948 samples, and it ended `TinyGBC EXIT 0` with `VIDEO=aaddaa41 AUDIO=a36b5633`, equal to `tests/gb_bench_expected.txt`. In the reference library DEV-011 was revised to name `firmware/include/tinygbc.h` and the frame buffers at 0x41fc0000 and 0x41fe0000, with a Revised note citing this entry, and `last_reviewed` moved to 2026-10-22. The picture path itself is untouched: no code writes a frame buffer yet, so the core shows its fabric colour bars and the next cycle's work stands as entry 5 described it. The core-syntax audit re-read `.ai/core.md` and `.ai/core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `.ai/core.md` was not changed and that entries 1 to 5 were not rewritten, and validated this entry as number 6 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and only eligible paths in Files Modified.
+
+#### Next Steps:
+
+The A25 still has to put a frame in a buffer: `gb_bench` converting gambatte's RGB565 into the unit's BGR555, red in bits 4:0, green 9:5 and blue 14:10, which is not libretro's 0RGB1555 and swaps red with blue if written straight, into the buffer not shown, writing the D-cache back and handing the buffer over at the vertical blank, with the two-frame settle entry 5 measured accounted for and handovers skipped while the display has not taken the last one, since the harness runs at about 400 percent of the Game Boy's frame rate. The channels that are still NES-shaped come after the picture: the core's 32,768 Hz sound against the DAC's 48,828.125 Hz, and the Wii pad mapping onto gambatte's input.
+
+#### Files Modified:
+
+- README.md
+- firmware/boot/Makefile
+- firmware/boot/link.ld
+- firmware/boot/load.c
+- firmware/boot/load.h
+- firmware/boot/main.c
+- firmware/include/tinygbc.h
+- firmware/rt/rt.mk
+- firmware/rt/syscalls.c
+- fpga/ae350_soc/video.sv
+- tools/deploy_tinygbc.sh
+- tools/load_ae350.py
+
+#### Status:
+
+- Build: PASS
+- Deployment: PASS
+- User Test: NOT RUN
+
+---

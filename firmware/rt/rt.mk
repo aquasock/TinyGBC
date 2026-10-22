@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: MIT
 #
-# Build rules for TinyNES AE350 runtime programs: C and C++ (exceptions and
+# Build rules for TinyGBC AE350 runtime programs: C and C++ (exceptions and
 # RTTI on) with newlib and libstdc++, linked to run from the SDRAM after the
 # boot ROM loads them (tools/load_ae350.py). An app Makefile sets APP and
 # SOURCES (.c, .cpp, .S, relative to its directory) and includes this file.
 # LIB_SOURCES are third-party .c and .cpp files, built with ARCHFLAGS, OPT,
 # CPPFLAGS and LIB_CPPFLAGS plus LIB_CFLAGS or LIB_CXXFLAGS in place of the
-# TinyNES warning and language flags. EXTRA_OBJECTS are linked in as well.
+# TinyGBC warning and language flags. EXTRA_OBJECTS are linked in as well.
 #
 #   make                  build $(BUILD)/$(APP).elf
 #   make BUILD=<dir>      choose the output directory

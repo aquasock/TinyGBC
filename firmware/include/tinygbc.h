@@ -155,7 +155,7 @@ volatile uint32_t *tn_host_reg(uint32_t offset);
  *
  * The ROM answers the header, each block and the whole image with
  * TN_LOAD_ACK, or TN_LOAD_NAK and a reason letter; a NAKed block is sent
- * again. After the last ACK it prints "TinyNES RUN <entry>" and jumps. */
+ * again. After the last ACK it prints "TinyGBC RUN <entry>" and jumps. */
 #define TN_LOAD_MAGIC        0x314c4e54u /* "TNL1" */
 #define TN_LOAD_HEADER_BYTES 24u
 #define TN_LOAD_BLOCK_BYTES  8192u

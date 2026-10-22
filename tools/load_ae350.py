@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-"""Load a program into the TinyNES AE350 SDRAM over the UART and run it.
+"""Load a program into the TinyGBC AE350 SDRAM over the UART and run it.
 
-Waits for the boot ROM's "TinyNES LOAD" line, sends the ELF file's loadable
-segments as one image with the protocol in firmware/include/tinynes.h, then
+Waits for the boot ROM's "TinyGBC LOAD" line, sends the ELF file's loadable
+segments as one image with the protocol in firmware/include/tinygbc.h, then
 prints the program's output until it exits. Fails if the ROM or the program
 prints a line starting with BAD, the ROM reports NOBOOT, the program exits
 with a nonzero code, or an --expect prefix never appears.
 
-A program that prints "TinyNES WANT <address> <bytes>" is sent --file the
+A program that prints "TinyGBC WANT <address> <bytes>" is sent --file the
 same way, as a second image at that address holding "TNR1", the file's
 length and the file (nes_bench's PLAY=1 build takes its cartridge so).
 
-After a "TinyNES LINK" line the board's UART is in link mode
+After a "TinyGBC LINK" line the board's UART is in link mode
 (fpga/ae350_soc/desk_link.sv): its text comes in TinyTang's frames,
 0xAA len_hi len_lo type payload, as type 0x20, which are unwrapped here,
 and the link's other frames (the joypad report, 0x03) are dropped.
@@ -136,7 +136,7 @@ class Board:
             while b"\n" in self.text:
                 line, _, rest = self.text.partition(b"\n")
                 self.text = bytearray(rest)
-                if not self.framed and line.startswith(b"TinyNES LINK"):
+                if not self.framed and line.startswith(b"TinyGBC LINK"):
                     # Everything after this line is framed.
                     self.framed = True
                     self.frames.extend(self.text)
@@ -229,7 +229,7 @@ def main():
                         help="seconds the program may run; 0 for no limit")
     parser.add_argument("--retries", type=int, default=5)
     parser.add_argument("--file", help="sent when the program asks for one "
-                        "with a TinyNES WANT line")
+                        "with a TinyGBC WANT line")
     parser.add_argument("--expect", action="append", default=[],
                         help="an output line must start with this; repeatable")
     args = parser.parse_args()
@@ -260,7 +260,7 @@ def main():
     try:
         if args.tinytang:
             open_pipe(board)
-        board.wait_line(b"TinyNES LOAD", args.timeout, echo=True)
+        board.wait_line(b"TinyGBC LOAD", args.timeout, echo=True)
         start = time.monotonic()
         load(board, base, image, entry, args.retries)
         seconds = time.monotonic() - start
@@ -269,7 +269,7 @@ def main():
         for line in board.lines(time.monotonic() + run_limit):
             print(line.decode("ascii", "replace"))
             board.check_line(line)
-            if line.startswith(b"TinyNES WANT "):
+            if line.startswith(b"TinyGBC WANT "):
                 if payload is None:
                     raise LoadError("the program wants a file; give --file")
                 fields = line.split()
@@ -284,7 +284,7 @@ def main():
                       f"{seconds:.2f} s")
                 continue
             expected = [p for p in expected if not line.startswith(p)]
-            if line.startswith(b"TinyNES EXIT "):
+            if line.startswith(b"TinyGBC EXIT "):
                 code = line.split()[2].decode()
                 if code != "0":
                     raise LoadError(f"program exited with {code}")

@@ -55,8 +55,11 @@ It opens an X11 window at four times scale, runs at 59.7275 Hz, and takes
 arrows as the d-pad, `Z` as B, `X` as A, `Enter` as Start, `Right Shift` as
 Select, `F5` to save and `Esc` to quit. It writes `gb_play.state` on a save,
 on `SIGUSR1`, on a signal and on exit, and a rolling `gb_play.state.auto`
-every 600 frames. The A25 program needs the AE350 SoC bitstream and the
-boot ROM's loader, which are TinyNES's until this tree has its own.
+every 600 frames. The A25 program needs the AE350 SoC image loaded on the
+board; its boot ROM is this tree's own (`firmware/boot`), and
+`tools/deploy_tinygbc.sh` puts the image on the card and has TinyTang's
+`tangload` program the FPGA with it. A program then goes over the UART with
+`tools/load_ae350.py --tinytang`.
 
 ## fpga/ae350_soc
 
@@ -73,6 +76,7 @@ map but the picture no longer reads them.
 tools/build_ae350_soc.sh        # synthesise, place, route and pack
 tools/build_ae350_soc.sh        # writes build/ae350_soc/ae350_soc.{fs,bin}
 python3 tools/sweep.py ae350_soc --seeds 1-8
+tools/deploy_tinygbc.sh         # card /root/cores/console138k/tinygbc.bin, then tangload
 ```
 
 The build needs the open flow: `~/oss-cad-suite`, nextpnr-himbaechel and a

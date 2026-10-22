@@ -160,7 +160,7 @@ static uint32_t load(void)
 		return 0;
 	}
 	tn_put_char((char)TN_LOAD_ACK);
-	tn_put_str("TinyNES RUN ");
+	tn_put_str("TinyGBC RUN ");
 	tn_put_hex(entry);
 	tn_put_str("\r\n");
 	tn_wait_tx_idle();

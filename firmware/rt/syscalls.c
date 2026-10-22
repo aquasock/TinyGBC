@@ -184,7 +184,7 @@ int _gettimeofday(struct timeval *tv, void *tz)
 
 void _exit(int code)
 {
-	tn_put_str("TinyNES EXIT ");
+	tn_put_str("TinyGBC EXIT ");
 	if (code < 0) {
 		tn_put_char('-');
 		tn_put_dec(-(uint32_t)code);
