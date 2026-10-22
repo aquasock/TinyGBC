@@ -616,3 +616,33 @@ The whole archive is held in RAM while it is unpacked, so a zip larger than four
 - User Test: PASS
 
 ---
+
+## 18 COMMIT Unreleased 2026-10-22T16:58:12-07:00
+
+#### Coming From:
+
+Unreleased 1e62100
+
+#### Purpose:
+
+Build the Game Boy library the card's TinyGBC folder needs in the shape the NES library already has, and keep the tool that does it.
+
+#### Outcome:
+
+`tools/make_gb_library.py` builds the tree from MiSTer's `games/Gameboy` and `games/GBC` folders in the shape the card's `/root/media/nes` has, which is the shape TinyDesk's Files app imposes (TDESK-017: 64 entries a folder with `..` included, 47 bytes a name): one folder per first character of the title, region tags gone from the names, at most 61 files a folder, and a letter that outgrows that cut into balanced folders labelled by the prefixes they hold, which is how the NES library's B became `Ba` and `Be-Bz` and its S `Sa-Sp` and `Sq-Sz`. The two sources hold 600 and 543 zips; two Game Boy titles had a USA and a Japan release apiece and the USA one was kept, so the sets are 598 and 543 titles, and 29 titles exist in both sets as different games (Aladdin, Wario Land II and 27 more), which are both kept: the Color one keeps the plain title and the monochrome one gets ` (GB)`. The result is `/home/vash/Documents/gbc`, built by `tools/make_gb_library.py --to` and outside this repository: 1,141 cartridges in 38 folders, the largest 61 files (D), every name at most 47 bytes, 289.7 MB. 47 titles were over the limit with their tags gone and each is shortened by hand in the script's `RENAMES` table, cut at a word boundary where that keeps the game's own name and at the middle where the tail is what tells one game from another (`Simpsons, The - Miniature Golf Madness`, `TMNT II - Back from the Sewers`, `E.T. - Escape from Planet Earth`). A rebuild into an empty folder compares identical to the built tree. Every one of the 1,141 archives was put through the player's own reader on the PC: all were accepted, every one inflated to an image carrying the Game Boy header logo, and each output file's SHA-256 matches exactly one source zip, 598 from the Game Boy folder and 543 from the GBC one. No hardware was involved, so the build, deployment and user-test stages do not apply to this cycle; the user copies the tree to the card's `/root/media/gb`, where the TinyGBC window's Library already browses folders. The core-syntax audit re-read `core.md` and `core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `core.md` was not changed and entries 1 to 17 were not rewritten, and validated this entry as number 18 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and only eligible paths in Files Modified.
+
+#### Next Steps:
+
+The library has to be copied to the card's `/root/media/gb` and looked at in the TinyGBC window before anything about it is settled: 38 folders at the root, a `..` on every page below it, and the ` (GB)` pairs are the things to check by eye. Adding cartridges later is the same command with the same sources and a fresh destination, and a title that then needs shortening is one more line in `RENAMES`; the tool refuses to write over an existing folder so that a half-built library is never mixed with a new one.
+
+#### Files Modified:
+
+- tools/make_gb_library.py
+
+#### Status:
+
+- Build: N/A
+- Deployment: N/A
+- User Test: N/A
+
+---
