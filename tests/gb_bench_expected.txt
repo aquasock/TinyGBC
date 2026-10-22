@@ -8,3 +8,13 @@ TinyGBC GB FRAMES=1800 AVG=74 MIN=54 MAX=245 OVER=0 SPEED=22624.3% SAMPLES=98794
 # tools/load_ae350.py --tinytang after tangload of TinyNES's ae350_soc.bin
 # (SHA-256 69195778a66d006eda79432051d0ef8d523c7985eeb4077b4a7c61105111e1f4):
 TinyGBC GB FRAMES=1800 AVG=4110 MIN=3697 MAX=7283 OVER=0 SPEED=407.3% SAMPLES=987948 VIDEO=aaddaa41 AUDIO=a36b5633
+
+# The user's cartridge, Legend of Zelda, The - Oracle of Seasons (USA,
+# Australia), 1,048,576 bytes, SHA-256
+# 862a51368fb30539279d336b3fe193b43876d2cb15c87a36f5da517804ab3971, CGB 0xC0,
+# MBC5+RAM+BATTERY 0x1B, driven by tests/zelda_input.txt (647 presses,
+# START and A alternating every 60 frames from 600 to 20,000), 24,000 frames.
+# PC:
+TinyGBC GB FRAMES=24000 AVG=60 MIN=2 MAX=184 OVER=0 SPEED=27903.3% SAMPLES=13167010 VIDEO=900c74b5 AUDIO=0630f3c5
+# On the A25, same program, same script, after tangload of ae350_soc.bin:
+TinyGBC GB FRAMES=24000 AVG=4565 MIN=215 MAX=9222 OVER=0 SPEED=366.7% SAMPLES=13167010 VIDEO=900c74b5 AUDIO=0630f3c5

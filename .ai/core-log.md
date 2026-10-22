@@ -43,3 +43,34 @@ The port needs a picture next, and that is where the work stops being reusable: 
 - User Test: NOT RUN
 
 ---
+## 2 COMMIT Unreleased 2026-10-21T20:34:23-07:00
+
+#### Coming From:
+
+Unreleased 4f2309c
+
+#### Purpose:
+
+Measure gambatte on the A25 with the user's own cartridge, The Legend of Zelda - Oracle of Seasons, a banked 1 MiB Color Game Boy game rather than the 128 KiB homebrew image of entry 1.
+
+#### Outcome:
+
+The user put their own cartridge in place of entry 1's uCity: Legend of Zelda, The - Oracle of Seasons (USA, Australia), 1,048,576 bytes with SHA-256 `862a51368fb30539279d336b3fe193b43876d2cb15c87a36f5da517804ab3971`, the CGB flag `0xC0`, MBC5 with RAM and battery, and the internal title `ZELDA DIN`. Driving it took longer than the emulation did, and changed the harness twice. The script table held 64 presses, and a run long enough to cross this game's opening needs hundreds, so the program answered `TinyGBC GB BAD INPUT` until the table was raised to 2,048. More revealing, the first 12,000 frames of the first attempt were byte-identical to a run with no input at all: a START pressed at frame 120 or at frame 300 lands on the Nintendo logo, where the game ignores it, so every later press of A fell on a title screen that only accepts START. Rather than assume the pad path, it was proved by running uCity with right held and with down held and watching both change the checksums away from a run with no input; the script that works alternates START and A every 60 frames from frame 600, 647 presses in all, and is stored as `tests/zelda_input.txt` so the run can be repeated without rediscovering it. With that script, holding right from frame 22,000 changes both the picture and the sound where holding it earlier changed nothing. On the PC the program is deterministic over 24,000 frames, two runs both ending `VIDEO=900c74b5 AUDIO=0630f3c5` with 13,167,010 samples. The AE350 program is 1,394,524 bytes of text, which is gambatte plus the megabyte cartridge, 21,252 of data and 82,464 of bss. The board had re-enumerated since entry 1, so the first load failed for want of a `TinyNES LOAD` line; `tangload` of the image already on the card, SHA-256 `69195778a66d006eda79432051d0ef8d523c7985eeb4077b4a7c61105111e1f4`, restored it, and `tools/load_ae350.py --tinytang` then ran the program: 24,000 frames averaged 4,565 us, minimum 215 and maximum 9,222, with no frame over the 16,742.7 us period, 366.7 percent, 13,167,010 samples and every checksum equal to the PC's. Oracle of Seasons therefore runs at about 3.7 times full speed on the A25 against uCity's 4.07 in entry 1, which is the direction expected: the larger game and its banked code cost more, and even the slowest frame, 9,222 us, left more than half the period unused. One limit belongs with the number: the script reaches the game's menus, name entry and opening but not confirmed player control, so the figure describes this cartridge's boot, title, file select and intro rather than a measured overworld, and the harness has no display, so the screens after frame 18,000 are text and menu boxes that checksums alone cannot identify further. The core-syntax audit re-read `.ai/core.md` and `.ai/core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `.ai/core.md` was not changed and that entry 1 was not rewritten, and validated this entry as number 2 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and no ineligible paths in Files Modified.
+
+#### Next Steps:
+
+Turning this into a gameplay number needs a known input path rather than a guessed one, and there are two cheap ways to get it: drive the menus by hand once with a picture attached and write the presses down, or give the harness a savestate so a state taken in the overworld can be loaded and run for a fixed stretch. The double-speed question of entry 1 is still open and matters more with a title of this size, since double speed is what would halve the remaining margin. The port itself still needs a picture, and that remains the point at which the video unit's raster and clocks, the 15-bit colour, the audio rate and the pad mapping stop being reusable from the NES and start being TinyGBC's own.
+
+#### Files Modified:
+
+- firmware/apps/gb_bench/main.cpp
+- tests/gb_bench_expected.txt
+- tests/zelda_input.txt
+
+#### Status:
+
+- Build: PASS
+- Deployment: PASS
+- User Test: NOT RUN
+
+---

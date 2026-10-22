@@ -103,7 +103,7 @@ struct Press {
 	unsigned first, count;
 	uint16_t buttons;
 };
-Press presses[64];
+Press presses[2048];
 unsigned press_count;
 
 struct Button {
