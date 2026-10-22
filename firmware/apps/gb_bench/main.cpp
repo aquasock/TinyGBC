@@ -20,8 +20,10 @@
 //   TinyGBC GB F=<frame> AVG=<us> MAX=<us> VIDEO=<crc> AUDIO=<crc>
 //   TinyGBC GB FRAMES=<n> AVG=<us> MIN=<us> MAX=<us> OVER=<n> SPEED=<x.y>%
 //       SAMPLES=<n> VIDEO=<crc> AUDIO=<crc>
-//   TinyGBC GB DISPLAY FB=<crc> PACE=<0|1> [SHOWN=<n> SHOW=<us> LATE=<n>
-//       PIXELS=<n> BITS=<hex>]
+//   TinyGBC GB DISPLAY FB=<crc> PACE=<0|1> [SHOWN=<n> SHOW=<us> VF=<n>
+//       LATE=<n> PIXELS=<n> BITS=<hex> PIXELS0=<n>]
+//   TinyGBC GB AUDIO SENT=<n> PAIRS=<n> DROPS=<n> UNDERRUNS=<n> LEVEL=<n>
+//       US=<us>
 //
 // The DISPLAY line appears only in a GB_DISPLAY build (make DISPLAY=1),
 // which converts each frame out of the core's RGB565 into the video unit's
@@ -77,6 +79,12 @@ extern "C" const unsigned char gb_state[], gb_state_end[];
 
 #if defined(GB_PACE) && !defined(GB_DISPLAY)
 #error GB_PACE needs GB_DISPLAY
+#endif
+
+/* GB_AUDIO plays the core's sound on the AE350's I2S DAC and HDMI. It is a
+ * hardware path only: a PC build keeps converting samples for the checksum. */
+#if defined(GB_AUDIO) && defined(__riscv)
+#define GB_AUDIO_OUT 1
 #endif
 
 namespace {
@@ -276,6 +284,69 @@ enum { DISPLAY_MAX_W = 160 };
 
 		for (unsigned x = 0; x < w; x++)
 			out[x] = display_pixel(row[x]);
+	}
+}
+#endif
+
+#ifdef GB_AUDIO_OUT
+/* gambatte hands over 32,768 Hz sample pairs, while the I2S DAC and HDMI both
+ * run at 75 MHz / 1536 = 48,828.125 Hz (AUD-001, DEV-020). Resampling here is
+ * libretro's arrangement: the core reports its rate and the frontend converts
+ * to the sink's. 32,768 / 48,828.125 is exactly 0.67108864 input samples per
+ * output sample, which a Q32 phase step holds without drift, and each output
+ * sample is interpolated linearly between the two input samples either side of
+ * it. A write to a full FIFO is dropped and counted by the unit itself. */
+const uint64_t AUDIO_STEP_Q32 = 2882303762ull; /* 0.67108864 * 2^32, rounded */
+const uint64_t AUDIO_ONE_Q32 = 1ull << 32;
+
+int16_t rs_prev_l, rs_prev_r, rs_cur_l, rs_cur_r;
+uint64_t rs_pos;
+bool rs_primed;
+uint64_t audio_us;
+unsigned audio_pairs;
+/* The last pair emitted, for the level top-up below. */
+int16_t audio_last_l, audio_last_r;
+unsigned audio_fix;
+/* One emulated frame carries about 818 pairs and the unit drains them over
+ * the frame, so the reserve kept in the FIFO has to cover a whole frame plus
+ * margin: 1,500 of 2,048 pairs. The emulator's pacing is a hair slower than
+ * the DAC, so the level creeps down and is topped up two pairs at a time. */
+const unsigned AUDIO_LOW = 1500;
+const unsigned AUDIO_PRIME = 1100; /* room for one frame's push */
+const unsigned AUDIO_TOPUP = 2;
+
+int16_t audio_lerp(int16_t a, int16_t b, uint64_t pos)
+{
+	return (int16_t)((int32_t)a +
+			 (int32_t)(((int64_t)((int32_t)b - (int32_t)a) *
+				    (int64_t)pos) >> 32));
+}
+
+void audio_resample(const int16_t *data, size_t frames)
+{
+	for (size_t i = 0; i < frames; i++) {
+		const int16_t l = data[2 * i], r = data[2 * i + 1];
+
+		if (!rs_primed) {
+			rs_prev_l = rs_cur_l = l;
+			rs_prev_r = rs_cur_r = r;
+			rs_pos = 0;
+			rs_primed = true;
+			continue;
+		}
+		rs_cur_l = l;
+		rs_cur_r = r;
+		while (rs_pos < AUDIO_ONE_Q32) {
+			audio_last_l = audio_lerp(rs_prev_l, rs_cur_l, rs_pos);
+			audio_last_r = audio_lerp(rs_prev_r, rs_cur_r, rs_pos);
+			TN_AUDIO_DATA = ((uint32_t)(uint16_t)audio_last_l << 16) |
+					(uint16_t)audio_last_r;
+			audio_pairs++;
+			rs_pos += AUDIO_STEP_Q32;
+		}
+		rs_pos -= AUDIO_ONE_Q32;
+		rs_prev_l = rs_cur_l;
+		rs_prev_r = rs_cur_r;
 	}
 }
 #endif
@@ -639,6 +710,18 @@ int main()
 	uint64_t total_us = 0, min_us = ~0ull, max_us = 0;
 	uint64_t total_samples = 0;
 	unsigned over = 0;
+#ifdef GB_AUDIO_OUT
+	/* Playback starts here: the FIFO is emptied and the unit enabled, then
+	 * the resampler feeds it one pair per output sample. The unit's counters
+	 * wrap and run from reset, so what is reported is their movement. */
+	TN_AUDIO_CTRL = TN_AUDIO_ENABLE | TN_AUDIO_FLUSH;
+	/* Fill the FIFO with silence first, so the unit never starts empty. */
+	for (unsigned i = 0; i < AUDIO_PRIME; i++)
+		TN_AUDIO_DATA = 0;
+	const uint32_t audio_frames0 = TN_AUDIO_FRAMES;
+	const uint32_t audio_drops0 = TN_AUDIO_DROPS;
+	const uint32_t audio_under0 = TN_AUDIO_STATUS >> 16;
+#endif
 #ifdef GB_DISPLAY
 	uint32_t fb_crc = 0;
 #if defined(__riscv)
@@ -678,6 +761,30 @@ int main()
 			dump_frame(f, frame_ptr, frame_w, frame_h, frame_pitch);
 #endif
 		}
+#ifdef GB_AUDIO_OUT
+		if (audio_copy_frames) {
+			uint64_t a0 = ticks();
+
+			audio_resample(audio_copy, audio_copy_frames);
+			/* The emulator's pacing is a hair slower than the DAC's clock,
+			 * so the FIFO drains over a long run; repeat the newest pair
+			 * when the reserve is short rather than let the unit underrun. */
+			if (audio_pairs) {
+				unsigned level = TN_AUDIO_LEVEL(TN_AUDIO_STATUS);
+
+				for (unsigned k = 0;
+				     k < AUDIO_TOPUP && level < AUDIO_LOW; k++) {
+					TN_AUDIO_DATA =
+						((uint32_t)(uint16_t)audio_last_l
+						 << 16) |
+						(uint16_t)audio_last_r;
+					level++;
+					audio_fix++;
+				}
+			}
+			audio_us += to_us(ticks() - a0);
+		}
+#endif
 #ifdef GB_DISPLAY
 		if (frame_ptr)
 			fb_crc = display_crc(frame_ptr, frame_w, frame_h, frame_pitch,
@@ -760,6 +867,19 @@ int main()
 	       speed_x10 / 10, speed_x10 % 10, (unsigned)total_samples,
 	       (unsigned)video_crc, (unsigned)audio_crc);
 
+#ifdef GB_AUDIO_OUT
+	{
+		const uint32_t st = TN_AUDIO_STATUS;
+
+		printf("TinyGBC GB AUDIO SENT=%u PAIRS=%u FIX=%u DROPS=%u"
+		       " UNDERRUNS=%u LEVEL=%u US=%u\n",
+		       (unsigned)(TN_AUDIO_FRAMES - audio_frames0), audio_pairs,
+		       audio_fix, (unsigned)(TN_AUDIO_DROPS - audio_drops0),
+		       (unsigned)((st >> 16) - audio_under0),
+		       (unsigned)TN_AUDIO_LEVEL(st),
+		       (unsigned)(audio_us / frames));
+	}
+#endif
 #ifdef GB_DISPLAY
 	printf("TinyGBC GB DISPLAY FB=%08x", (unsigned)fb_crc);
 #ifdef GB_PACE

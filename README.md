@@ -24,6 +24,7 @@ TinyGBC GB CORE=gambatte ROM=<bytes> CRC=<crc32> CGB=<0|1> AV=160x144 FPS=... ST
 TinyGBC GB F=<frame> AVG=<us> MAX=<us> VIDEO=<crc> AUDIO=<crc>
 TinyGBC GB FRAMES=<n> AVG=<us> MIN=<us> MAX=<us> OVER=<n> SPEED=<x.y>% SAMPLES=<n> VIDEO=<crc> AUDIO=<crc>
 TinyGBC GB DISPLAY FB=<crc> PACE=<0|1> [SHOWN=<n> SHOW=<us> VF=<n> LATE=<n> PIXELS=<n> BITS=<hex> PIXELS0=<n>]
+TinyGBC GB AUDIO SENT=<n> PAIRS=<n> FIX=<n> DROPS=<n> UNDERRUNS=<n> LEVEL=<n> US=<us>
 ```
 
 The core is built with `VIDEO_RGB565`, its default integer (blipper) audio
@@ -47,6 +48,20 @@ the harness runs at about four times the Game Boy's rate, and the picture
 settles two frames after the write. `PACE=1` adds one emulated frame per Game
 Boy frame (16,742.7 us), which is how the picture is watched.
 
+`make AUDIO=1` plays the sound: gambatte hands over 32,768 Hz sample pairs and
+the Pmod I2S2's DAC and HDMI both run at 75 MHz / 1536 = 48,828.125 Hz, so the
+harness resamples, which is libretro's arrangement: the core reports its rate
+and the frontend converts to the sink's. 32,768 / 48,828.125 is exactly
+0.67108864 input samples per output sample, held as a Q32 phase step, and each
+output sample is interpolated linearly between the two input samples either
+side of it. The FIFO is primed with silence and kept at about 1,500 of its
+2,048 pairs, a repeated pair at a time, because the emulator's pacing is a hair
+slower than the DAC's clock; `FIX` counts those pairs, `DROPS` and `UNDERRUNS`
+are the unit's own counters, and `US` is what resampling costs per emulated
+frame. The core's `AUDIO` checksum is untouched, so the PC and AE350 still
+compare. An unpaced run produces sound three times too fast for the DAC and
+will drop by design.
+
 ## Building and running
 
 ```
@@ -60,7 +75,7 @@ make ROM=../../../third_party/roms/ucity.gbc        # the AE350 program
 `FRAMES=<n>`, `INPUT="<first>+<count>=<buttons> ..."` and `CHECK=<n>` are
 build-time options, and `STATE=<file>` embeds a savestate and loads it after
 the cartridge, so a run can start in the game rather than at boot.
-`DISPLAY=1` and `PACE=1` are described above.
+`DISPLAY=1`, `PACE=1` and `AUDIO=1` are described above.
 
 To play on the PC and take a savestate by hand:
 

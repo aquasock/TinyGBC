@@ -346,3 +346,35 @@ None.
 - User Test: NOT RUN
 
 ---
+
+## 10 COMMIT Unreleased 2026-10-22T07:26:57-07:00
+
+#### Coming From:
+
+Unreleased 2a586b3
+
+#### Purpose:
+
+Play the Game Boy's sound on the board, which the harness had never fed to the DAC at all.
+
+#### Outcome:
+
+`make AUDIO=1` gives `gb_bench` an audio path: gambatte's 32,768 Hz sample pairs are resampled to the 48,828.125 Hz both sinks run at (AUD-001, DEV-020) and written into the I2S FIFO, which is libretro's arrangement of the job, the core reporting its rate and the frontend converting to the sink's. The ratio is exactly 0.67108864 input samples per output sample, held as a Q32 phase step (`2882303762`), and each output pair is interpolated linearly between the two input pairs either side of it; the core's own `AUDIO` checksum is untouched, so the PC and the AE350 still compare. Two corrections came out of running it. The level check first sat after the frame's 817 pairs had been pushed, where the FIFO always looked healthy while it emptied during the next frame, and the emulator's pacing is a hair slower than the DAC's clock so it does empty: priming to 1,600 against a 2,048-deep FIFO then overflowed on the first push, and what works is a prime of 1,100, a reserve kept near 1,500 by repeating the newest pair two at a time when it falls short, and a report of every pair so repeated. With the state, the walk, `DISPLAY=1 PACE=1 AUDIO=1` and 3,600 frames, the board played `SENT=2945483 PAIRS=2943053 FIX=2223 DROPS=0 UNDERRUNS=0 LEVEL=885 US=158`: no underrun and no drop over 60.3 seconds, 2,223 repeated pairs out of 2.94 million (0.08 percent), and 158 us a frame of resampler cost. The emulation was untouched by all of it, `AVG=5054` against entry 9's 5,030 with `OVER=0` and 331.2 percent, and `VIDEO=278bd312 AUDIO=45ac9983 FB=c48a9cea LATE=0 PIXELS=500650 BITS=7fff` equal to the PC and to entry 9. An unpaced run produces sound three times too fast for the DAC and drops by design, which the unit's drop counter will show. The core-syntax audit re-read `.ai/core.md` and `.ai/core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `.ai/core.md` was not changed and that entries 1 to 9 were not rewritten, and validated this entry as number 10 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and only eligible paths in Files Modified.
+
+#### Next Steps:
+
+The user has to hear it: the Pmod I2S2 and HDMI should both carry the game at the right pitch, and the first thing to expect if not is a rate that is right but a channel swapped, since the resampler interpolates each channel independently. After the ears, the last NES-shaped piece is the Wii pad mapped onto gambatte's input, which would let the game be played rather than scripted, and the audio could then be judged under play rather than under a fixed walk.
+
+#### Files Modified:
+
+- README.md
+- firmware/apps/gb_bench/Makefile
+- firmware/apps/gb_bench/main.cpp
+
+#### Status:
+
+- Build: PASS
+- Deployment: PASS
+- User Test: NOT RUN
+
+---
