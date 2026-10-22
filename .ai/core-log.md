@@ -378,3 +378,33 @@ The user has to hear it: the Pmod I2S2 and HDMI should both carry the game at th
 - User Test: NOT RUN
 
 ---
+
+## 11 COMMIT Unreleased 2026-10-22T07:33:16-07:00
+
+#### Coming From:
+
+Unreleased 8703c22
+
+#### Purpose:
+
+Record the user's acceptance of the picture and the sound, which entry 10 could not carry because it was already committed when the listening happened.
+
+#### Outcome:
+
+The demo was played again on the board through `tools/load_ae350.py --tinytang` with the build entry 10 left, and it reproduced entry 10's figures: `SENT=2945480 PAIRS=2943053 FIX=2216 DROPS=0 UNDERRUNS=0 LEVEL=881 US=158` with `LATE=0 PIXELS=500650 FB=c48a9cea`, ending `TinyGBC EXIT 0`. Listening to that run on both outputs, the user reported the sound perfect on the Pmod I2S2 and on HDMI, and passed the cycle. Shown the frames captured from the board earlier in the day, the user had also accepted the picture. The user test is therefore recorded as passed for the picture that entries 7 and 8 produced and for the sound entry 10 produced, which closes the acceptance that those three entries carried as not run; entry 9's walk was not judged separately, but the picture and sound it produced come from the same path. Nothing was built or changed in this cycle. The core-syntax audit re-read `.ai/core.md` and `.ai/core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `.ai/core.md` was not changed and that entries 1 to 10 were not rewritten, and validated this entry as number 11 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and `None.` in Files Modified.
+
+#### Next Steps:
+
+The last channel still shaped for the NES is the pad: mapping the Wii Classic Controller, already read by the fabric on PMOD0 and used by TinyNES, onto gambatte's input, so the game can be played rather than scripted. That would also let the picture and the sound be judged under play. After it, the port has a picture, a sound and an input, and what remains belongs to the SoC rather than the machine: the inherited desk layer and link mode, and whether the audio's 0.08 percent of repeated pairs is worth removing.
+
+#### Files Modified:
+
+None.
+
+#### Status:
+
+- Build: N/A
+- Deployment: PASS
+- User Test: PASS
+
+---
