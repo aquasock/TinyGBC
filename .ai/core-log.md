@@ -316,3 +316,33 @@ The user should confirm the picture on the monitor, which is the one thing the c
 - User Test: NOT RUN
 
 ---
+
+## 9 COMMIT Unreleased 2026-10-22T07:14:25-07:00
+
+#### Coming From:
+
+Unreleased d73f707
+
+#### Purpose:
+
+Measure the board playing Oracle of Seasons from the savestate taken on the previous evening, with a scripted walk moving the character and the picture shown on HDMI.
+
+#### Outcome:
+
+The board was rebooted, so `tools/deploy_tinygbc.sh` re-loaded entry 8's image (`0fcad2cc`, `ID=0001081b`, `core loaded`), and `gb_bench` was built with `STATE=build/firmware/apps/gb_play/gb_play.state`, `INPUT` set to `tests/zelda_walk.txt`, `FRAMES=3600` and `DISPLAY=1 PACE=1`. The cartridge is Oracle of Seasons, 1,048,576 bytes, CRC-32 `d7e9f5d7`, CGB; the program is 1,478,376 bytes of text. A PC run of the same build gave `VIDEO=278bd312 AUDIO=45ac9983 SAMPLES=1975050` and `FB=c48a9cea`, and the board reproduced all four, so the walk it played is the walk the PC played. On the A25 the savestate loaded in 76.7 ms, and the 3,600 frames averaged 5,030 us each, minimum 4,372 and maximum 5,890, with no frame over the 16,742.7 us period: 332.8 percent of the Game Boy's rate with the character walking, against 330.6 percent for entry 3's walk from its own state. The video unit handed over 3,297 frames across 3,619 display frames, 60.3 seconds of play at 60 Hz, at 2,527 us a handover, with `LATE=0`, `PIXELS=500650` for the last whole frame and `BITS=7fff`. The state on disk is not the one entry 3 recorded: it is the same 59,629 bytes but hashes `c0c54bcea6757d48e8bf9568c54f77732dc382570c8d54490e6ed9af5ec6df49` rather than `49d4a697`, because the play build writes its state on exit as well as on F5, so the file is a slightly later frame of the same overworld. That the scripted walk reaches the game was checked on the PC rather than assumed: frames 300 and 600 of this state differ in 16,739 source pixels, and 600 and 1500 in 313. No frames were captured from the capture card this cycle: it left the bus when HDMI was moved back to the monitor, so the picture was seen by the user rather than measured. The core-syntax audit re-read `.ai/core.md` and `.ai/core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `.ai/core.md` was not changed and that entries 1 to 8 were not rewritten, and validated this entry as number 9 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and `None.` in Files Modified.
+
+#### Next Steps:
+
+The user's confirmation of the picture and the walk on the monitor is what remains of this cycle. The next work is the two channels still shaped for the NES: the core's 32,768 Hz sound against the DAC's 48,828.125 Hz, which is a resampler choice in the harness, and the Wii pad mapped onto gambatte's input, which would let the game be played rather than scripted.
+
+#### Files Modified:
+
+None.
+
+#### Status:
+
+- Build: PASS
+- Deployment: PASS
+- User Test: NOT RUN
+
+---
