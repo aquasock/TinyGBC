@@ -7,6 +7,10 @@
 
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* Forget any partial header and clear the receive error flags. */
 void tn_load_reset(void);
 
@@ -15,5 +19,9 @@ void tn_load_reset(void);
  * and return the entry once the line is sent; the caller must fence.i and
  * jump. Returns 0 if nothing was loaded. */
 uint32_t tn_load_poll(uint32_t cycles);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

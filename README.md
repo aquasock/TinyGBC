@@ -119,6 +119,23 @@ board; its boot ROM is this tree's own (`firmware/boot`), and
 `tangload` program the FPGA with it. A program then goes over the UART with
 `tools/load_ae350.py --tinytang`.
 
+## The desk launcher
+
+`make CARD=1` builds the player TinyTang's TinyGBC window runs: no cartridge
+is built in, the launcher sends one after the player prints `TinyGBC WANT`, and
+it is paced, has sound and reads the pad, so it runs until HOME and MINUS are
+held together. The artifact is `build/firmware/apps/gb_card/tinygbc-play.elf`,
+and `tools/deploy_tinygbc.sh` puts it on the card at
+`/root/ae350/tinygbc-play.elf` beside the core image, which the window loads
+from `/root/cores/console138k/tinygbc.bin`.
+
+The window is TinyTang's (`ports/bl616/tinygbc_app.cpp` there), not this
+tree's: the Library page lists the card's `.gbc` and `.gb` files from
+`/root/media/gb`, and launching one loads the core, sends the cartridge as the
+file the player asks for, and puts the desktop core back when the game exits.
+Its Input, Video and Saves pages are placeholders until the player has
+something to set.
+
 ## fpga/ae350_soc
 
 The SoC is TinyNES's, imported whole: the AE350, its SDRAM and block RAM, the

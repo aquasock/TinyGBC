@@ -542,3 +542,38 @@ The line buffer is now 160 entries per parity and closes timing at seed 9, so th
 - User Test: PASS
 
 ---
+
+## 16 COMMIT Unreleased 2026-10-22T15:23:04-07:00
+
+#### Coming From:
+
+Unreleased ebf76c4
+
+#### Purpose:
+
+Start a cartridge from a window on TinyTang's desktop, the way TinyNES does, by making the player accept a cartridge over the UART and giving the desk launcher a library page that sends one.
+
+#### Outcome:
+
+TinyGBC's player can now be started by a window on TinyTang's desktop. The player had never linked as a cartridge player: `firmware/boot/load.h` declared `tn_load_reset` and `tn_load_poll` without `extern "C"`, so main.cpp's C++ translation unit referenced mangled names and the link failed on both; the header now carries the same guards `uart.h` does. A new `CARD=1` option in `firmware/apps/gb_bench/Makefile` builds the single artifact the launcher needs, implying `CART=1 DISPLAY=1 PACE=1 AUDIO=1 PAD=1 FRAMES=0`, and names it `tinygbc-play.elf` under `build/firmware/apps/gb_card/`: 393,752 bytes in one LOAD segment at `0x40000000`, with the heap reaching `0x41fc0000`, so the two-megabyte cartridge buffer that `receive_cart` mallocs fits above the program and below the frame buffers. `tools/deploy_tinygbc.sh` now puts that file at `/root/ae350/tinygbc-play.elf` beside the core image, and still verifies a repacked `.fs` before it deploys anything. On the TinyTang side, edited in place with the user's permission and therefore not in this repository, the desk launcher turned out to recognise only `TinyNES LOAD`, `TinyNES WANT`, `TinyNES LINK` and `TinyNES EXIT`, while this tree's boot ROM and player say `TinyGBC`, so the handshake would have stopped at its first line; `ports/bl616/tang_fpga_uart.c` there gained `ae350_says()`, which matches either product name and hands back the fields past it, and the five call sites use it, with the NVRAM and settings requests left TinyNES-only until the player has saves. The window itself is `ports/bl616/tinygbc_app.cpp` there: a Library page listing the card's `.gbc` and `.gb` files from the first of `/root/media/gb`, `/root/media/gbc`, `/root/media/gbcolor` and `/root/media` that exists, launching through `tang_core_load` and `tang_ae350_run` and putting `desktop.bin` back afterwards, with Input, Video and Saves as labelled placeholders; zip archives are not listed because gambatte has no archive reader, unlike TinyNES's cores. The firmware built clean as `tinytang 0b0685a-dirty.45da5d7`, which `platform` reports after the flash and the power cycle, and `tools/deploy_tinygbc.sh` put the seed-9 image `fe24481837968d2f44c8ccf3016883f39955456a7ea6cebfd3e957cfdde62fed` and the player on the card, with `ucity.gbc` copied to `/root/media/gb` as the test cartridge. The user launched the game from the window, played it, and came back to the console, so the core load, the cartridge handover, the link and the exit all work; the default seed in `tools/build_ae350_soc.sh` moved from 4 to 9 as entry 15 asked, and README gained a section on the launcher. The core-syntax audit re-read `core.md` and `core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `core.md` was not changed and entries 1 to 15 were not rewritten, and validated this entry as number 16 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and only eligible paths in Files Modified.
+
+#### Next Steps:
+
+The window's Input, Video and Saves pages are placeholders because the player has nothing behind them: the next work is a battery save and a savestate on the A25, asked for and sent back over the same `WANT` channel the cartridge uses, so the library can keep a `.sav` beside each `.gbc` and `TinyGBC NVRAM WANT` and the settings blob can join the four lines the launcher already understands. The left stick still moves in the pad trace with no axis mapped or deadzoned, and the TinyTang edits are uncommitted in that repository, where the user's own Phosphor changes are also in progress.
+
+#### Files Modified:
+
+- README.md
+- firmware/apps/gb_bench/Makefile
+- firmware/apps/gb_bench/main.cpp
+- firmware/boot/load.h
+- tools/build_ae350_soc.sh
+- tools/deploy_tinygbc.sh
+
+#### Status:
+
+- Build: PASS
+- Deployment: PASS
+- User Test: PASS
+
+---

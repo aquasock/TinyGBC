@@ -58,6 +58,9 @@
 #ifdef __riscv
 #include "tinygbc.h"
 #include "uart.h"
+#ifdef GB_CART
+#include "load.h" /* the boot ROM's loader, for the cartridge the launcher sends */
+#endif
 #else
 #include <ctime>
 #endif
@@ -368,6 +371,40 @@ void audio_resample(const int16_t *data, size_t frames)
 }
 #endif
 
+#ifdef GB_CART
+/* The launcher sends the cartridge after this program asks for it: the boot
+ * ROM's loader, compiled in here, receives it into the heap as the TNR1 image
+ * `ae350run` and tools/load_ae350.py --file send, and the core is given that
+ * buffer instead of one built into the program. */
+const size_t CART_MAX = 2u << 20;
+
+const uint8_t *receive_cart(size_t &size)
+{
+	uint8_t *buffer = static_cast<uint8_t *>(malloc(CART_MAX + 8));
+
+	if (!buffer)
+		return nullptr;
+	printf("TinyGBC WANT %08lx %08lx\n",
+	       (unsigned long)(uintptr_t)buffer,
+	       (unsigned long)(CART_MAX + 8));
+	fflush(stdout);
+	tn_load_reset();
+	uint32_t got = 0;
+
+	for (int second = 0; second < 30 && !got; second++)
+		got = tn_load_poll(TN_CORE_HZ);
+	uint32_t magic = 0, length = 0;
+
+	memcpy(&magic, buffer, 4);
+	memcpy(&length, buffer + 4, 4);
+	if (got != (uintptr_t)buffer || magic != 0x31524e54u /* "TNR1" */ ||
+	    length == 0 || length > CART_MAX)
+		return nullptr;
+	size = length;
+	return buffer + 8;
+}
+#endif
+
 #ifdef GB_PAD_OUT
 /* The pad the fabric polls on bus 0. Bytes 4 and 5 of its report carry
  * fifteen active-low buttons and the left stick is bytes 0 and 1; reading
@@ -447,6 +484,11 @@ void pad_poll(void)
 		pad_bits |= 1u << RETRO_DEVICE_ID_JOYPAD_LEFT;
 	if (b4 & PAD_B4_RIGHT)
 		pad_bits |= 1u << RETRO_DEVICE_ID_JOYPAD_RIGHT;
+#ifdef GB_CART
+	/* The desktop is over the game: its pointer has the controller. */
+	if (TN_LINK_STATUS & TN_LINK_SHOWN)
+		pad_bits = 0;
+#endif
 }
 
 /* HOME and MINUS together end a run built with FRAMES=0. */
@@ -772,9 +814,22 @@ int main()
 		return 2;
 	}
 
+#ifdef GB_CART
+	size_t rom_size = 0;
+	const uint8_t *cart = receive_cart(rom_size);
+
+	if (!cart) {
+		printf("TinyGBC CART FAILED\n");
+		return 1;
+	}
+	const uint32_t rom_crc = crc_update(0, cart, rom_size);
+	const unsigned cgb = rom_size > 0x143 ? (cart[0x143] >> 7) & 1u : 0u;
+#else
 	const size_t rom_size = (size_t)(gb_rom_end - gb_rom);
 	const uint32_t rom_crc = crc_update(0, gb_rom, rom_size);
 	const unsigned cgb = rom_size > 0x143 ? (gb_rom[0x143] >> 7) & 1u : 0u;
+	const uint8_t *cart = gb_rom;
+#endif
 
 	uint64_t t0 = ticks();
 	retro_set_environment(gb_environment);
@@ -791,7 +846,7 @@ int main()
 	retro_game_info info;
 	memset(&info, 0, sizeof info);
 	info.path = "built-in";
-	info.data = gb_rom;
+	info.data = cart;
 	info.size = rom_size;
 
 	if (!retro_load_game(&info)) {
@@ -812,6 +867,15 @@ int main()
 	       (double)av.timing.sample_rate, (unsigned)start_us);
 	if (state_size)
 		printf("TinyGBC GB STATE=%u LOADED\n", (unsigned)state_size);
+
+#ifdef GB_CART
+	/* Link mode last: from here this program's text goes out as TinyDesk
+	 * frames, the desk layer can sit over the picture, and the launcher that
+	 * started us knows the game is up. */
+	printf("TinyGBC LINK\n");
+	fflush(stdout);
+	TN_UART_CTRL = TN_UART_LINK_MODE;
+#endif
 
 	/* FRAMES=0 means run until HOME and MINUS are held together. */
 #ifdef GB_LB_TEST

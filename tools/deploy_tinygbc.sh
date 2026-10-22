@@ -12,14 +12,18 @@
 # are looked for in $TINYTANG_TOOLS, then the usual checkouts. The card path
 # and the port are $TINYGBC_CARD_PATH and $TINYGBC_PORT.
 #
-# This loads the core and leaves it running. A program is then loaded over the
-# UART with tools/load_ae350.py --tinytang.
+# The desk launcher's player goes on the card too, when it has been built
+# (make CARD=1 in firmware/apps/gb_bench), at the path TinyTang's TinyGBC window
+# runs it from. A program is otherwise loaded over the UART with
+# tools/load_ae350.py --tinytang.
 set -euo pipefail
 
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 image=${1:-$root/build/ae350_soc/ae350_soc.bin}
 remote=${TINYGBC_CARD_PATH:-/root/cores/console138k/tinygbc.bin}
 port=${TINYGBC_PORT:-/dev/ttyACM0}
+player=${TINYGBC_PLAYER:-$root/build/firmware/apps/gb_card/tinygbc-play.elf}
+player_remote=${TINYGBC_PLAYER_CARD_PATH:-/root/ae350/tinygbc-play.elf}
 
 [[ -f $image ]] || { echo "no image at $image: run tools/build_ae350_soc.sh" >&2; exit 1; }
 
@@ -50,6 +54,16 @@ fi
 
 echo "image $(sha256sum "$image" | cut -d' ' -f1) $(stat -c %s "$image") bytes"
 python3 "$tools/tinytang_put.py" "$image" "$remote" --port "$port"
+
+# The launcher's player: a file on the card, not a running program, so it goes
+# before the core is loaded. Without it the TinyGBC window opens and says the
+# player could not be started.
+if [[ -f $player ]]; then
+	echo "player $(sha256sum "$player" | cut -d' ' -f1) $(stat -c %s "$player") bytes"
+	python3 "$tools/tinytang_put.py" "$player" "$player_remote" --port "$port"
+else
+	echo "no player at $player: the desk launcher will not start a game" >&2
+fi
 
 # The desk layer mirrors the console over whatever core is loaded, so it is
 # dropped before the FPGA is reprogrammed underneath it, as TinyTang's own

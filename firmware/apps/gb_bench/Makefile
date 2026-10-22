@@ -10,6 +10,9 @@
 #                               a playable window on this PC, for taking a
 #                               savestate by hand: X11, keys as printed at
 #                               start, F5 saves
+#   make CARD=1                 the desk launcher's player, which carries no
+#                               cartridge and takes the one the launcher
+#                               sends: build/firmware/apps/gb_card/
 #
 # FRAMES=<n>, INPUT="<script>" and CHECK=<n> replace the defaults in main.cpp.
 # DISPLAY=1 writes each frame into the video unit's frame buffer and hands it
@@ -49,6 +52,20 @@ ifeq ($(PLAY),1)
 APP_DEFS += -DGB_PLAY
 BUILD     ?= $(abspath ../../../build/firmware/apps/gb_play)
 endif
+# CARD=1 is the desk launcher's player, built whole: the launcher sends the
+# cartridge, the picture is paced for watching, the sound plays and the pad is
+# read, and it runs until HOME and MINUS are held together (FRAMES=0). Its
+# artifact carries the name of the card path it is deployed to.
+ifeq ($(CARD),1)
+CART    := 1
+DISPLAY := 1
+PACE    := 1
+AUDIO   := 1
+PAD     := 1
+FRAMES  ?= 0
+APP     := tinygbc-play
+BUILD   ?= $(abspath ../../../build/firmware/apps/gb_card)
+endif
 APP_DEFS += $(if $(FRAMES),-DGB_FRAMES=$(FRAMES)) \
             $(if $(INPUT),-DGB_INPUT='"$(INPUT)"') \
             $(if $(CHECK),-DGB_CHECK=$(CHECK))
@@ -60,6 +77,13 @@ APP_DEFS += -DGB_PACE
 endif
 ifeq ($(AUDIO),1)
 APP_DEFS += -DGB_AUDIO
+endif
+# CART=1 is the launcher's player: no embedded cartridge, one received over the
+# UART after printing TinyGBC WANT, and link mode announced once the game runs.
+ifeq ($(CART),1)
+APP_DEFS += -DGB_CART
+SOURCES  += ../../boot/load.c
+CPPFLAGS += -I../../boot
 endif
 ifeq ($(PAD),1)
 APP_DEFS += -DGB_PAD
@@ -96,10 +120,16 @@ $(BUILD)/gb.state: FORCE
 	 else : > $@; fi
 
 # Copied so that the image path may hold spaces, and only when it changes.
+# A CART build carries no cartridge: the launcher sends one over the UART, so
+# the embedded image is empty and gb_rom == gb_rom_end.
 $(BUILD)/rom.gbc: FORCE
-	@test -n "$(ROM)" || { echo "set ROM=<file.gbc>" >&2; exit 1; }
 	@mkdir -p $(dir $@)
+ifeq ($(CART),1)
+	@: > $@
+else
+	@test -n "$(ROM)" || { echo "set ROM=<file.gbc>" >&2; exit 1; }
 	@cmp -s "$(ROM)" $@ || cp "$(ROM)" $@
+endif
 
 # The PC build: the same sources with the host compiler.
 HOST     := $(BUILD)/host

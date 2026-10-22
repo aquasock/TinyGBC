@@ -30,8 +30,11 @@ family=GW5AST-138C
 # no clean seed reported a hold violation. Those are the imported design's
 # figures: the retargeted video unit then reached 84.10 and 101.21 at seed 4
 # (core-log entry 4) and 92.26 and 101.05 once its fetch port was widened
-# (entry 5). Seed 4 is the default here.
-seed="${TINYGBC_SEED:-4}"
+# (entry 5). The second sweep, after the fetch index grew to eight bits, is
+# what decides it now: seven of seeds 9 to 16 cleared the bus and seed 9 was
+# best at 83.86 MHz bus and 98.35 pixel (entry 15), which is the image this
+# tree deploys.
+seed="${TINYGBC_SEED:-9}"
 
 [[ -f "$suite/environment" ]] || { echo "missing open toolchain: $suite" >&2; exit 2; }
 # shellcheck disable=SC1090
