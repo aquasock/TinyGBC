@@ -93,6 +93,13 @@ extern "C" const unsigned char gb_state[], gb_state_end[];
 #if defined(GB_PAD) && defined(__riscv)
 #define GB_PAD_OUT 1
 #endif
+
+/* GB_LBTEST fills the frame buffer with a pattern that names its own pixel,
+ * shows it, and reads the video unit's line buffer back, so the fetch's
+ * column mapping can be measured rather than inferred. */
+#if defined(GB_LBTEST) && defined(__riscv)
+#define GB_LB_TEST 1
+#endif
 #if GB_FRAMES == 0 && !defined(GB_PAD_OUT)
 #error GB_FRAMES=0 runs until HOME and MINUS, so it needs GB_PAD
 #endif
@@ -807,6 +814,41 @@ int main()
 		printf("TinyGBC GB STATE=%u LOADED\n", (unsigned)state_size);
 
 	/* FRAMES=0 means run until HOME and MINUS are held together. */
+#ifdef GB_LB_TEST
+	{
+		uint16_t *fb = reinterpret_cast<uint16_t *>(TN_VIDEO_FB(0));
+		const size_t stride = TN_VIDEO_FB_STRIDE / TN_VIDEO_PIXEL_BYTES;
+		unsigned first_bad = 160;
+
+		for (unsigned y = 0; y < TN_VIDEO_HEIGHT; y++)
+			for (unsigned x = 0; x < TN_VIDEO_WIDTH; x++)
+				fb[stride * y + x] = (uint16_t)x;
+		tn_dcache_wbinval();
+		TN_VIDEO_CTRL = TN_VIDEO_ENABLE;
+		{
+			uint32_t f0 = TN_VIDEO_FRAMES;
+
+			while (TN_VIDEO_FRAMES - f0 < 3)
+				;
+		}
+		for (unsigned i = 0; i < TN_VIDEO_WIDTH; i++)
+			if ((TN_VIDEO_LB(i) & 0xffffu) != i) {
+				first_bad = i;
+				break;
+			}
+		printf("TinyGBC GB LBDEBUG=%08x LBDEBUG2=%08x\n",
+		       (unsigned)TN_VIDEO_DEBUG, (unsigned)TN_VIDEO_DEBUG2);
+		printf("TinyGBC GB LBTEST first_bad=%u LB0=%u LB31=%u LB32=%u"
+		       " LB127=%u LB128=%u LB159=%u\n", first_bad,
+		       (unsigned)(TN_VIDEO_LB(0) & 0xffffu),
+		       (unsigned)(TN_VIDEO_LB(31) & 0xffffu),
+		       (unsigned)(TN_VIDEO_LB(32) & 0xffffu),
+		       (unsigned)(TN_VIDEO_LB(127) & 0xffffu),
+		       (unsigned)(TN_VIDEO_LB(128) & 0xffffu),
+		       (unsigned)(TN_VIDEO_LB(159) & 0xffffu));
+		return 0;
+	}
+#endif
 	const unsigned frames = GB_FRAMES;
 	/* 70224 dots a frame at 4194304 Hz, in microseconds. */
 	const uint64_t period_us = 70224ull * 1000000ull / 4194304ull;

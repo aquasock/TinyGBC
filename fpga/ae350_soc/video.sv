@@ -135,9 +135,14 @@ module video #(
     reg [8:0] emphasis [0:511];
 
     // Two line buffers, one 16-bit colour per entry: line y of the frame is
-    // in half y[0]. Written on clk as the fetch arrives and read on pix_clk
-    // while they are steady, so they are kept in flip-flops, not block RAM.
-    (* ram_style = "logic" *) reg [15:0] lb [0:511];
+    // in the buffer y[0]. Written on clk as the fetch arrives and read on
+    // pix_clk while they are steady, so they are kept in flip-flops, not
+    // block RAM. They are two arrays of 256 rather than one of 512 indexed by
+    // {parity, pixel} because the single 9-bit index wrapped in hardware:
+    // pixels 128 to 159 also landed in entries 0 to 31, so the leftmost 32
+    // columns of every line repeated its rightmost 32 (core-log entry N).
+    (* ram_style = "logic" *) reg [15:0] lb0 [0:160];
+    (* ram_style = "logic" *) reg [15:0] lb1 [0:160];
 
     // Pixel-side state the bus side reads through synchronisers.
     reg shown_buf = 1'b0;
@@ -150,8 +155,19 @@ module video #(
     reg late_t = 1'b0;     // toggles for each line shown late
 
     // ---------------------------------------------------------- bus side --
-    localparam [2:0] R_CTRL = 3'd0, R_STATUS = 3'd1, R_FRAMES = 3'd2, R_ID = 3'd3,
-                     R_LATE = 3'd4, R_PIXELS = 3'd5, R_BITS = 3'd6, R_ASPECT = 3'd7;
+    localparam [3:0] R_CTRL = 4'd0, R_STATUS = 4'd1, R_FRAMES = 4'd2, R_ID = 4'd3,
+                     R_LATE = 4'd4, R_PIXELS = 4'd5, R_BITS = 4'd6, R_ASPECT = 4'd7,
+                     R_DEBUG = 4'd8,   // 0x0020, the fetch's count and first pair
+                     R_DEBUG2 = 4'd9;  // 0x0024, the fetch's last pair
+
+    /* Debug: what the fetch actually delivered. dbg_count is how many
+     * halfwords arrived since the last vstart, and dbg_vi/dbg_vd the first
+     * pair, which is what says whether index and data are paired. */
+    reg [15:0] dbg_count = 16'd0;
+    reg [7:0] dbg_vi = 8'd0;
+    reg [15:0] dbg_vd = 16'd0;
+    reg [7:0] dbg_last_vi = 8'd0;
+    reg [15:0] dbg_last_vd = 16'd0;
 
     reg [1:0] ctrl = 2'b00;          // {buffer, enable}
     reg [1:0] aspect = 2'd1;         // 0 = 8:7, 1 = 1:1, 2 = 4:3
@@ -198,12 +214,14 @@ module video #(
     wire accept = hready_in && hsel && htrans[1];
     wire word = hsize == 3'd2 && haddr[1:0] == 2'b00;
     wire is_unit = haddr[17:16] == 2'b01;
-    wire is_reg = is_unit && haddr[15:12] == 4'h0 && haddr[11:5] == 7'd0;
+    wire is_reg = is_unit && haddr[15:12] == 4'h0 && haddr[11:6] == 6'd0;
     wire is_lb = is_unit && haddr[15:12] == 4'h0 && haddr[11:10] == 2'b10;
     wire is_pal = is_unit && haddr[15:12] == 4'h1;
     wire is_emph = is_unit && haddr[15:12] == 4'h2 && haddr[11] == 1'b0;
-    wire ok = word && (is_reg ? (hwrite ? (haddr[4:2] == R_CTRL || haddr[4:2] == R_ASPECT)
-                                            : haddr[4:2] <= R_ASPECT) :
+    wire ok = word && (is_reg ? (hwrite ? (haddr[5:2] == R_CTRL || haddr[5:2] == R_ASPECT)
+                                            : (haddr[5:2] <= R_ASPECT ||
+                                               haddr[5:2] == R_DEBUG ||
+                                               haddr[5:2] == R_DEBUG2)) :
                        is_lb ? !hwrite : (is_pal || is_emph) && hwrite);
     reg [19:0] pixels;               // pixel side, steady between blanks
     reg [15:0] bits;                 // likewise
@@ -254,7 +272,8 @@ module video #(
                 hready <= 1'b1;
             end else if (lb_read) begin
                 lb_read <= 1'b0;
-                hrdata <= {16'd0, lb[lb_index]};
+                hrdata <= {16'd0, lb_index > 8'd159 ? 16'd0 :
+                           (haddr[10] ? lb1[lb_index] : lb0[lb_index])};
                 hready <= 1'b1;
             end else if (w_wait) begin
                 if (!hs_busy) begin
@@ -271,7 +290,7 @@ module video #(
                 // CTRL write in its data phase now is passed straight on.
                 hrdata <= 32'd0;
                 if (accept && !hwrite && ok && !is_lb)
-                    case (haddr[4:2])
+                    case (haddr[5:2])
                         R_CTRL: hrdata <= {30'd0, d_reg && !d_aspect ? hwdata[1:0] : ctrl};
                         R_STATUS: hrdata <= {29'd0, shown_en_sync[1], shown_buf_sync[1], vblank_sync[1]};
                         R_FRAMES: hrdata <= frames;
@@ -279,6 +298,8 @@ module video #(
                         R_LATE: hrdata <= late;
                         R_PIXELS: hrdata <= {12'd0, pixels};
                         R_ASPECT: hrdata <= {30'd0, aspect};
+                        R_DEBUG: hrdata <= {8'd0, dbg_count[7:0], dbg_vd, dbg_vi};
+                        R_DEBUG2: hrdata <= {8'd0, dbg_last_vd, dbg_last_vi};
                         default: hrdata <= {16'd0, bits};
                     endcase
                 if (accept) begin
@@ -339,9 +360,28 @@ module video #(
         end
     end
 
-    always @(posedge clk)
-        if (vvalid)
-            lb[{lb_half, vindex}] <= vdata;
+    always @(posedge clk) begin
+        if (vstart) begin
+            dbg_count <= 16'd0;
+            dbg_vi <= 8'd0;
+            dbg_vd <= 16'd0;
+            dbg_last_vi <= 8'd0;
+            dbg_last_vd <= 16'd0;
+        end
+        if (vvalid) begin
+            dbg_last_vi <= vindex;
+            dbg_last_vd <= vdata;
+            if (dbg_count == 16'd0) begin
+                dbg_vi <= vindex;
+                dbg_vd <= vdata;
+            end
+            dbg_count <= dbg_count + 1'b1;
+            if (lb_half)
+                lb1[vindex] <= vdata;
+            else
+                lb0[vindex] <= vdata;
+        end
+    end
 
     // -------------------------------------------------------- pixel side --
     reg [1:0] ctrl_meta = 2'b00, ctrl_sync = 2'b00;
@@ -510,7 +550,7 @@ module video #(
                       hcnt < 3 * BAR ? 3'd2 : hcnt < 4 * BAR ? 3'd3 :
                       hcnt < 5 * BAR ? 3'd4 : hcnt < 6 * BAR ? 3'd5 :
                       hcnt < 7 * BAR ? 3'd6 : 3'd7;
-    wire [15:0] lb_word = lb[{ny[0], nx[7:0]}];
+    wire [15:0] lb_word = ny[0] ? lb1[nx] : lb0[nx];
     wire [11:0] cell0 = cell_row + {5'd0, hcnt[10:4]};
 
     // {layer, de, pic, hs, vs, en, bar} per stage.

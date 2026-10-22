@@ -80,6 +80,14 @@ bits 7:4 and SCL in 3:0) reads the four buses' pin levels directly: the PMOD
 pairs idle high, and the USB pair idles low until a powered adapter's pull-ups
 reach it, which is what tells a wiring fault from a protocol one.
 
+`make LBTEST=1` measures the video path instead of playing: it fills the frame
+buffer with a pattern that names its own pixel, shows it, and reads the video
+unit's line buffer back through `TN_VIDEO_LB`, printing the first entry that
+does not match. `TN_VIDEO_DEBUG` (`0xe8010020`) and `TN_VIDEO_DEBUG2`
+(`0xe8010024`) report the halfword count and the first and last
+`(index, data)` pair the SDRAM fetch delivered, which is how a fetch fault is
+told from a display fault.
+
 ## Building and running
 
 ```

@@ -167,7 +167,10 @@ module ae350_soc_top #(
     wire vid_start;
     wire [24:8] vid_addr;
     wire vid_valid;
-    wire [6:0] vid_index;
+    // Eight bits: a line is 160 halfwords, and seven bits truncated the
+    // last 32 onto the first 32, so the leftmost 32 columns of every line
+    // repeated its rightmost 32 (core-log entry 15).
+    wire [7:0] vid_index;
     wire [15:0] vid_data;
     wire vid_done;
 

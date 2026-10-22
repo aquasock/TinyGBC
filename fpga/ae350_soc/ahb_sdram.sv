@@ -151,7 +151,13 @@ module ahb_sdram #(
     // clock.
     reg [CAPTURE-1:0] pipe_valid = 0;
     reg [CAPTURE-1:0] pipe_video = 0;
-    reg [7:0] pipe_index [0:CAPTURE-1];
+    // The halfword index per read in flight, carried in a packed shift
+    // register rather than an array: as an array the synthesis narrowed it to
+    // seven bits (the narrowest writer is the CPU path's five), so the last 32
+    // halfwords of a video line wrapped onto the first 32 and the leftmost 32
+    // columns of every line repeated its rightmost 32 (core-log entry 15).
+    reg [8*CAPTURE-1:0] pipe_index = 0;
+    wire [7:0] pipe_index_oldest = pipe_index[8*CAPTURE-1 -: 8];
 
     reg [9:0] refresh_count = 10'd0;
     reg refresh_due = 1'b0;
@@ -201,17 +207,16 @@ module ahb_sdram #(
 
             pipe_valid <= {pipe_valid[CAPTURE-2:0], 1'b0};
             pipe_video <= {pipe_video[CAPTURE-2:0], 1'b0};
-            for (k = CAPTURE - 1; k > 0; k = k - 1)
-                pipe_index[k] <= pipe_index[k - 1];
+            pipe_index <= {pipe_index[8*CAPTURE-9:0], 8'd0};
             if (pipe_valid[CAPTURE-1] && pipe_video[CAPTURE-1]) begin
                 vvalid <= 1'b1;
-                vindex <= pipe_index[CAPTURE-1];
+                vindex <= pipe_index_oldest;
                 vdata <= dq_rise;
-                vdone <= pipe_index[CAPTURE-1] == 8'd159;
+                vdone <= pipe_index_oldest == 8'd159;
             end else if (pipe_valid[CAPTURE-1]) begin
-                line[16 * pipe_index[CAPTURE-1][3:0] +: 16] <= dq_rise;
-                if (pipe_index[CAPTURE-1][1:0] == 2'd3)
-                    line_valid[pipe_index[CAPTURE-1][3:2]] <= 1'b1;
+                line[16 * pipe_index_oldest[3:0] +: 16] <= dq_rise;
+                if (pipe_index_oldest[1:0] == 2'd3)
+                    line_valid[pipe_index_oldest[3:2]] <= 1'b1;
             end
 
             if (ready) begin
@@ -304,7 +309,7 @@ module ahb_sdram #(
                     {sdram_cs_n, sdram_ras_n, sdram_cas_n, sdram_we_n} <= CMD_READ;
                     sdram_a <= {4'b0000, op_addr[9:5], read_index};
                     pipe_valid[0] <= 1'b1;
-                    pipe_index[0] <= {3'd0, read_index};
+                    pipe_index[7:0] <= {3'd0, read_index};
                     step <= step + 1'b1;
                     if (step == 7'd15)
                         state <= S_PRECHARGE;
@@ -314,7 +319,7 @@ module ahb_sdram #(
                     sdram_a <= {4'b0000, vcol};
                     pipe_valid[0] <= 1'b1;
                     pipe_video[0] <= 1'b1;
-                    pipe_index[0] <= step;
+                    pipe_index[7:0] <= step;
                     vcol <= vcol + 1'b1;
                     step <= step + 1'b1;
                     // 160 halfwords, so that index 159 arrives and vdone fires

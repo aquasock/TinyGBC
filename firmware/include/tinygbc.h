@@ -65,6 +65,8 @@ volatile uint32_t *tn_host_reg(uint32_t offset);
 #define TN_VIDEO_ID      TN_REG(0x1000c) /* read: TN_VIDEO_ID_VALUE */
 #define TN_VIDEO_LATE    TN_REG(0x10010) /* read: lines shown before fetched */
 #define TN_VIDEO_PIXELS  TN_REG(0x10014) /* read: non-zero pixels, last frame */
+#define TN_VIDEO_DEBUG   TN_REG(0x10020) /* read: last fetch's count, first data, first index */
+#define TN_VIDEO_DEBUG2  TN_REG(0x10024) /* read: last fetch's last data and index */
 #define TN_VIDEO_BITS    TN_REG(0x10018) /* read: pixel bits seen 1 (7:0), 0 (15:8) */
 #define TN_VIDEO_ASPECT  TN_REG(0x1001c) /* read and write: pixel aspect at the next vblank */
 #define TN_VIDEO_LB(i)   TN_REG(0x10800 + 4 * (i)) /* read: line-buffer halfword */

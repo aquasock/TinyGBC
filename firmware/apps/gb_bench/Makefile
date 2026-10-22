@@ -67,6 +67,9 @@ endif
 ifeq ($(PADTRACE),1)
 APP_DEFS += -DGB_PAD -DGB_PAD_TRACE
 endif
+ifeq ($(LBTEST),1)
+APP_DEFS += -DGB_LB_TEST
+endif
 CPPFLAGS += $(APP_DEFS)
 
 include ../../rt/rt.mk

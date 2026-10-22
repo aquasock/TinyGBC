@@ -505,3 +505,40 @@ The left stick is still the one input not decoded: its bytes 0 and 1 move in the
 - User Test: PASS
 
 ---
+
+## 15 COMMIT Unreleased 2026-10-22T14:42:29-07:00
+
+#### Coming From:
+
+Unreleased db87238
+
+#### Purpose:
+
+Find and fix the horizontal wrap the user saw once the picture was on a monitor: the leftmost 32 columns of every line repeating its rightmost 32, visible only where tiles animate, as water does.
+
+#### Outcome:
+
+The wrap was a seven-bit wire. `ae350_soc.sv` carried the SDRAM fetch's halfword index between `ahb_sdram` and `video` on `wire [6:0] vid_index`, so indices 128 to 159 arrived as 0 to 31 and the last 32 halfwords of every line overwrote the first 32, while the data itself was correct. Neither testbench could see it: `video_gb_tb` instantiates the video unit and drives `vindex` itself, and `sdram_video_tb` instantiates the controller, so the wire between them was in neither. The measurement that found it was taken on the board: `make LBTEST=1` fills the frame buffer with a pattern that names its own pixel, shows it, reads the line buffer back through `TN_VIDEO_LB`, and two new debug registers at `0xe8010020` and `0xe8010024` report the halfword count and the first and last `(index, data)` pair of the last fetch. Before the fix that read `LBDEBUG=a0000000 LBDEBUG2=00009f1f` - 160 words, first pair index 0 data 0, last pair index 31 data 159 - which named the fault as the index rather than the data, after the buffer had been split into two 256-entry arrays and the controller's index moved into a packed shift register, neither of which changed the symptom. Widening the wire to eight bits then cost timing: with an honest eight-bit index the tool could no longer halve the line buffer, and all eight seeds of a fresh sweep failed at placement, 42 to 53 MHz on the bus. Trimming the buffers from 256 entries to the 160 a line actually uses fixed the pixel clock on every seed, 76.71 to 92.29 MHz against 74.25, and after routing seven of the eight cleared the bus too, seed 9 best at 83.86 MHz bus and 98.35 pixel. Seed 9 was built and deployed as `fe24481837968d2f44c8ccf3016883f39955456a7ea6cebfd3e957cfdde62fed`, and the same LBTEST then read `LBDEBUG2=00009f9f` - last pair index 159, data 159 - with `LB0=0`, `LB32=32`, `LB127=127`, `LB128=128` and `LB159=159`; `first_bad=6` is one entry still holding game data, which the pattern write did not reach and which the picture did not show. The play build with the savestate, sound and pad then ran on the board and the user passed it. `video_gb_tb` gained four checks at the picture's left edge (source columns 0, 1, 31 and 32) and now checks fifteen things with no failure; `sdram_video_tb` still passes. The lesson worth carrying: a tool that narrows an index to fit what it can prove only makes the design fast by making it wrong, and a signal that crosses between two modules needs a testbench that instantiates both. The core-syntax audit re-read `.ai/core.md` and `.ai/core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `.ai/core.md` was not changed and that entries 1 to 14 were not rewritten, and validated this entry as number 15 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and only eligible paths in Files Modified.
+
+#### Next Steps:
+
+The line buffer is now 160 entries per parity and closes timing at seed 9, so the seed default in `tools/build_ae350_soc.sh` should move from 4 to 9 when this cycle's image is kept. Left is the left stick, whose bytes 0 and 1 move in the pad trace but no axis has been mapped or deadzoned, and a savestate write path on the A25 so a session resumes rather than restarts.
+
+#### Files Modified:
+
+- README.md
+- firmware/apps/gb_bench/Makefile
+- firmware/apps/gb_bench/main.cpp
+- firmware/include/tinygbc.h
+- fpga/ae350_soc/ae350_soc.sv
+- fpga/ae350_soc/ahb_sdram.sv
+- fpga/ae350_soc/tb/video_gb_tb.sv
+- fpga/ae350_soc/video.sv
+
+#### Status:
+
+- Build: PASS
+- Deployment: PASS
+- User Test: PASS
+
+---

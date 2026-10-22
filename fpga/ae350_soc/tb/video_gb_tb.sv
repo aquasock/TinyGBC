@@ -201,6 +201,12 @@ module video_gb_tb;
 				expect_rgb(3, 645,      360, colour_of(81, 72),   "next pixel");
 				expect_rgb(3, 640,      365, colour_of(80, 73),   "next row");
 				expect_rgb(3, 600,      360, colour_of(72, 72),   "left of centre");
+				// The picture's own left edge: screen x = 240 is source
+				// column 0, and every five columns is the next source pixel.
+				expect_rgb(3, 240,      360, colour_of(0, 72),    "leftmost pixel");
+				expect_rgb(3, 245,      360, colour_of(1, 72),    "second pixel");
+				expect_rgb(3, 395,      360, colour_of(31, 72),   "pixel 31");
+				expect_rgb(3, 400,      360, colour_of(32, 72),   "pixel 32");
 				expect_rgb(3, 239,      360, 24'd0,               "left bar");
 				expect_rgb(3, 1040,     360, 24'd0,               "right bar");
 				if (prev_fetches < 143 || prev_fetches > 145) begin
