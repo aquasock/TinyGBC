@@ -18,3 +18,13 @@ TinyGBC GB FRAMES=1800 AVG=4110 MIN=3697 MAX=7283 OVER=0 SPEED=407.3% SAMPLES=98
 TinyGBC GB FRAMES=24000 AVG=60 MIN=2 MAX=184 OVER=0 SPEED=27903.3% SAMPLES=13167010 VIDEO=900c74b5 AUDIO=0630f3c5
 # On the A25, same program, same script, after tangload of ae350_soc.bin:
 TinyGBC GB FRAMES=24000 AVG=4565 MIN=215 MAX=9222 OVER=0 SPEED=366.7% SAMPLES=13167010 VIDEO=900c74b5 AUDIO=0630f3c5
+
+# From the savestate the user took in the overworld (frame 7872 of the play
+# build, 59,629 bytes, SHA-256
+# 49d4a6971587ce6bcc6ca10ca321dbdfeffe225d7fa776fdb44aead0b90484cf),
+# walking right, down, left and up in 600-frame blocks (tests/zelda_walk.txt),
+# 3,600 frames. The state is a derivative of the cartridge and stays in build/.
+# PC:
+TinyGBC GB FRAMES=3600 AVG=75 MIN=54 MAX=202 OVER=0 SPEED=22322.6% SAMPLES=1975050 VIDEO=42c0e370 AUDIO=b0c1088a
+# On the A25:
+TinyGBC GB FRAMES=3600 AVG=5063 MIN=4265 MAX=6118 OVER=0 SPEED=330.6% SAMPLES=1975050 VIDEO=42c0e370 AUDIO=b0c1088a

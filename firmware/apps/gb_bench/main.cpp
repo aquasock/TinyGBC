@@ -49,6 +49,7 @@
 #include "libretro.h"
 
 extern "C" const unsigned char gb_rom[], gb_rom_end[];
+extern "C" const unsigned char gb_state[], gb_state_end[];
 
 #ifndef GB_FRAMES
 #define GB_FRAMES 1800
@@ -67,7 +68,7 @@ const uint64_t tick_hz = TN_CORE_HZ;
 uint64_t ticks() { return tn_cycles64(); }
 #else
 const uint64_t tick_hz = 1000000000u;
-uint64_t ticks()
+[[maybe_unused]] uint64_t ticks()
 {
 	timespec ts;
 	clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -75,7 +76,7 @@ uint64_t ticks()
 }
 #endif
 
-uint64_t to_us(uint64_t t) { return t * 1000000u / tick_hz; }
+[[maybe_unused]] uint64_t to_us(uint64_t t) { return t * 1000000u / tick_hz; }
 
 uint32_t crc_table[256];
 
@@ -89,7 +90,7 @@ void crc_init()
 	}
 }
 
-uint32_t crc_update(uint32_t crc, const void *data, size_t len)
+[[maybe_unused]] uint32_t crc_update(uint32_t crc, const void *data, size_t len)
 {
 	const uint8_t *p = static_cast<const uint8_t *>(data);
 	crc = ~crc;
@@ -121,7 +122,7 @@ const Button buttons[] = {
 	{"right", RETRO_DEVICE_ID_JOYPAD_RIGHT},
 };
 
-bool parse_input(const char *s)
+[[maybe_unused]] bool parse_input(const char *s)
 {
 	while (*s) {
 		while (*s == ' ')
@@ -159,7 +160,7 @@ bool parse_input(const char *s)
 	return true;
 }
 
-uint16_t pad_state(unsigned frame)
+[[maybe_unused]] uint16_t pad_state(unsigned frame)
 {
 	uint16_t state = 0;
 	for (unsigned i = 0; i < press_count; i++)
@@ -174,7 +175,7 @@ uint16_t pad_state(unsigned frame)
  * them. */
 const char *dump_dir;
 
-void dump_frame(unsigned frame, const void *ptr, unsigned w, unsigned h, size_t pitch)
+[[maybe_unused]] void dump_frame(unsigned frame, const void *ptr, unsigned w, unsigned h, size_t pitch)
 {
 	if (!dump_dir)
 		return;
@@ -211,7 +212,12 @@ static const size_t AUDIO_MAX = 8192; /* sample frames */
 int16_t audio_copy[2 * AUDIO_MAX];
 size_t audio_copy_frames;
 
-unsigned frame_no;
+[[maybe_unused]] unsigned frame_no;
+
+#ifdef GB_PLAY
+/* The keyboard pad, as bits at RETRO_DEVICE_ID_JOYPAD_* positions. */
+uint16_t play_keys;
+#endif
 
 extern "C" {
 
@@ -237,7 +243,11 @@ int16_t gb_input_state(unsigned port, unsigned device, unsigned index, unsigned 
 {
 	if (port != 0 || device != RETRO_DEVICE_JOYPAD || index != 0)
 		return 0;
+#ifdef GB_PLAY
+	return (play_keys >> id) & 1u;
+#else
 	return (pad_state(frame_no) >> id) & 1u;
+#endif
 }
 
 bool gb_environment(unsigned cmd, void *data)
@@ -281,8 +291,218 @@ bool gb_environment(unsigned cmd, void *data)
 
 } // namespace
 
+
+#if defined(GB_PLAY) && !defined(__riscv)
+/*
+ * A window to play in, for taking savestates by hand. X11 because the host
+ * has libX11 and no SDL2 headers. It writes a state on F5, on SIGUSR1, on
+ * SIGINT and on quit, and a rolling autosave every ten seconds, so a state
+ * is never more than a moment behind whatever is being played.
+ */
+#include <X11/Xlib.h>
+#include <X11/Xutil.h>
+#include <X11/keysym.h>
+#include <csignal>
+#include <unistd.h>
+
+namespace {
+
+volatile sig_atomic_t save_signal;
+void on_save_signal(int) { save_signal = 1; }
+
+const char *state_path = "gb_play.state";
+unsigned play_frame;
+
+bool write_state(const char *path)
+{
+	size_t size = retro_serialize_size();
+	if (!size)
+		return false;
+	void *buf = malloc(size);
+	if (!buf)
+		return false;
+	if (!retro_serialize(buf, size)) {
+		free(buf);
+		return false;
+	}
+	FILE *f = fopen(path, "wb");
+	if (!f) {
+		free(buf);
+		return false;
+	}
+	size_t n = fwrite(buf, 1, size, f);
+	fclose(f);
+	free(buf);
+	printf("TinyGBC GB STATE frame=%u bytes=%u path=%s\n", play_frame,
+	       (unsigned)n, path);
+	fflush(stdout);
+	return n == size;
+}
+
+unsigned key_bit(KeySym k)
+{
+	switch (k) {
+	case XK_Up:      return 1u << RETRO_DEVICE_ID_JOYPAD_UP;
+	case XK_Down:    return 1u << RETRO_DEVICE_ID_JOYPAD_DOWN;
+	case XK_Left:    return 1u << RETRO_DEVICE_ID_JOYPAD_LEFT;
+	case XK_Right:   return 1u << RETRO_DEVICE_ID_JOYPAD_RIGHT;
+	case XK_z: case XK_Z:       return 1u << RETRO_DEVICE_ID_JOYPAD_B;
+	case XK_x: case XK_X:       return 1u << RETRO_DEVICE_ID_JOYPAD_A;
+	case XK_Return:  return 1u << RETRO_DEVICE_ID_JOYPAD_START;
+	case XK_Shift_R: return 1u << RETRO_DEVICE_ID_JOYPAD_SELECT;
+	default:         return 0;
+	}
+}
+
+int play_main()
+{
+	crc_init();
+
+	/* The core, set up as the benchmark sets it up. */
+	retro_set_environment(gb_environment);
+	retro_set_video_refresh(gb_video);
+	retro_set_audio_sample_batch(gb_audio);
+	retro_set_input_poll(gb_input_poll);
+	retro_set_input_state(gb_input_state);
+	retro_init();
+
+	retro_game_info info;
+	memset(&info, 0, sizeof info);
+	info.path = "built-in";
+	info.data = gb_rom;
+	info.size = (size_t)(gb_rom_end - gb_rom);
+	if (!retro_load_game(&info)) {
+		printf("TinyGBC GB LOAD FAILED\n");
+		return 1;
+	}
+	const size_t state_size = (size_t)(gb_state_end - gb_state);
+	if (state_size && !retro_unserialize(gb_state, state_size)) {
+		printf("TinyGBC GB STATE FAILED\n");
+		return 1;
+	}
+	if (state_size)
+		printf("TinyGBC GB STATE=%u LOADED\n", (unsigned)state_size);
+
+	printf("TinyGBC GB PLAY ROM=%u CGB=%u\n", (unsigned)info.size,
+	       info.size > 0x143 ? (gb_rom[0x143] >> 7) & 1u : 0u);
+	printf("TinyGBC GB KEYS arrows=dpad z=B x=A enter=start rshift=select"
+	       " f5=save esc=quit\n");
+	fflush(stdout);
+
+	Display *dpy = XOpenDisplay(NULL);
+	if (!dpy) {
+		printf("TinyGBC GB NO DISPLAY\n");
+		return 1;
+	}
+	const int screen = DefaultScreen(dpy);
+	const int scale = 4;
+	const unsigned W = 160 * scale, H = 144 * scale;
+	Window win = XCreateSimpleWindow(dpy, RootWindow(dpy, screen), 0, 0, W, H,
+					 0, BlackPixel(dpy, screen),
+					 BlackPixel(dpy, screen));
+	XStoreName(dpy, win, "TinyGBC - Oracle of Seasons");
+	Atom wm_delete = XInternAtom(dpy, "WM_DELETE_WINDOW", False);
+	XSetWMProtocols(dpy, win, &wm_delete, 1);
+	XSelectInput(dpy, win, KeyPressMask | KeyReleaseMask | ExposureMask |
+				StructureNotifyMask);
+	/* Key repeat would deliver a KeyRelease per repeat and drop the key. */
+	XAutoRepeatOff(dpy);
+
+	GC gc = XCreateGC(dpy, win, 0, NULL);
+	char *pixels = static_cast<char *>(calloc((size_t)W * H, 4));
+	XImage *img = XCreateImage(dpy, DefaultVisual(dpy, screen),
+				   (unsigned)DefaultDepth(dpy, screen), ZPixmap, 0,
+				   pixels, W, H, 32, 0);
+	XMapWindow(dpy, win);
+	XFlush(dpy);
+
+	struct sigaction sa;
+	memset(&sa, 0, sizeof sa);
+	sa.sa_handler = on_save_signal;
+	sigaction(SIGUSR1, &sa, NULL);
+	sigaction(SIGINT, &sa, NULL);
+	sigaction(SIGTERM, &sa, NULL);
+
+	const long frame_ns = 16742700; /* 70224 / 4194304 s */
+	timespec now;
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	long long next = (long long)now.tv_sec * 1000000000LL + now.tv_nsec;
+	bool running = true;
+
+	while (running) {
+		while (XPending(dpy)) {
+			XEvent ev;
+			XNextEvent(dpy, &ev);
+			if (ev.type == ClientMessage &&
+			    (Atom)ev.xclient.data.l[0] == wm_delete)
+				running = false;
+			else if (ev.type == KeyPress) {
+				KeySym k = XLookupKeysym(&ev.xkey, 0);
+				if (k == XK_Escape)
+					running = false;
+				else if (k == XK_F5)
+					write_state(state_path);
+				else
+					play_keys |= key_bit(k);
+			} else if (ev.type == KeyRelease) {
+				play_keys &= (uint16_t)~key_bit(
+					XLookupKeysym(&ev.xkey, 0));
+			}
+		}
+		if (save_signal) {
+			save_signal = 0;
+			write_state(state_path);
+		}
+
+		retro_run();
+		play_frame++;
+
+		if (!(play_frame % 600))
+			write_state("gb_play.state.auto");
+
+		/* RGB565 to the window's 32-bit pixels, nearest neighbour. */
+		if (frame_ptr) {
+			const uint8_t *src = static_cast<const uint8_t *>(frame_ptr);
+			for (unsigned y = 0; y < H; y++) {
+				const uint16_t *row = reinterpret_cast<const uint16_t *>(
+					src + (y / scale) * frame_pitch);
+				uint32_t *out = reinterpret_cast<uint32_t *>(
+					pixels + (size_t)y * img->bytes_per_line);
+				for (unsigned x = 0; x < W; x++) {
+					uint16_t v = row[x / scale];
+					out[x] = ((uint32_t)((v >> 11) & 0x1f) << 19) |
+						 ((uint32_t)((v >> 5) & 0x3f) << 10) |
+						 ((uint32_t)(v & 0x1f) << 3);
+				}
+			}
+			XPutImage(dpy, win, gc, img, 0, 0, 0, 0, W, H);
+			XFlush(dpy);
+		}
+
+		next += frame_ns;
+		clock_gettime(CLOCK_MONOTONIC, &now);
+		long long t = (long long)now.tv_sec * 1000000000LL + now.tv_nsec;
+		if (next > t) {
+			timespec d = {0, next - t};
+			nanosleep(&d, NULL);
+		} else if (t - next > 5 * frame_ns) {
+			next = t;
+		}
+	}
+
+	write_state(state_path);
+	XAutoRepeatOn(dpy);
+	XCloseDisplay(dpy);
+	return 0;
+}
+} // namespace
+#endif
+
 int main()
 {
+#if defined(GB_PLAY) && !defined(__riscv)
+	return play_main();
+#else
 	crc_init();
 #ifndef __riscv
 	dump_dir = getenv("GB_DUMP");
@@ -318,6 +538,11 @@ int main()
 		printf("TinyGBC GB LOAD FAILED ROM=%u\n", (unsigned)rom_size);
 		return 1;
 	}
+	const size_t state_size = (size_t)(gb_state_end - gb_state);
+	if (state_size && !retro_unserialize(gb_state, state_size)) {
+		printf("TinyGBC GB STATE FAILED\n");
+		return 1;
+	}
 	uint64_t start_us = to_us(ticks() - t0);
 
 	printf("TinyGBC GB CORE=gambatte ROM=%u CRC=%08x CGB=%u"
@@ -325,6 +550,8 @@ int main()
 	       (unsigned)rom_size, (unsigned)rom_crc, cgb, av.geometry.base_width,
 	       av.geometry.base_height, (double)av.timing.fps,
 	       (double)av.timing.sample_rate, (unsigned)start_us);
+	if (state_size)
+		printf("TinyGBC GB STATE=%u LOADED\n", (unsigned)state_size);
 
 	const unsigned frames = GB_FRAMES;
 	/* 70224 dots a frame at 4194304 Hz, in microseconds. */
@@ -398,4 +625,5 @@ int main()
 	       (unsigned)video_crc, (unsigned)audio_crc);
 
 	return 0;
+#endif
 }

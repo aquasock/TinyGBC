@@ -6,6 +6,10 @@
 #
 #   make ROM=<file.gbc>         AE350 program, build/firmware/apps/gb_bench/
 #   make ROM=<file.gbc> host    the same program for this PC, in host/
+#   make ROM=<file.gbc> PLAY=1 host
+#                               a playable window on this PC, for taking a
+#                               savestate by hand: X11, keys as printed at
+#                               start, F5 saves
 #
 # FRAMES=<n>, INPUT="<script>" and CHECK=<n> replace the defaults in main.cpp.
 # The programs contain the core and are GPL-2.0
@@ -13,7 +17,7 @@
 # they are for local use only.
 
 APP     := gb_bench
-SOURCES := main.cpp rom.S
+SOURCES := main.cpp rom.S state.S
 
 GAMBATTE_DIR := $(abspath ../../../third_party/gambatte-libretro)
 ifeq ($(wildcard $(GAMBATTE_DIR)/Makefile.common),)
@@ -36,7 +40,11 @@ LIB_CXXFLAGS := -std=gnu++11 -fno-rtti -fno-exceptions
 # main.cpp includes the core's libretro.h and its own headers.
 CPPFLAGS += $(INCFLAGS)
 
-APP_DEFS := $(if $(FRAMES),-DGB_FRAMES=$(FRAMES)) \
+ifeq ($(PLAY),1)
+APP_DEFS += -DGB_PLAY
+BUILD     ?= $(abspath ../../../build/firmware/apps/gb_play)
+endif
+APP_DEFS += $(if $(FRAMES),-DGB_FRAMES=$(FRAMES)) \
             $(if $(INPUT),-DGB_INPUT='"$(INPUT)"') \
             $(if $(CHECK),-DGB_CHECK=$(CHECK))
 CPPFLAGS += $(APP_DEFS)
@@ -56,6 +64,14 @@ $(call objects,main.cpp): $(DEFS_STAMP)
 ASFLAGS += -DGB_ROM_FILE='"$(BUILD)/rom.gbc"'
 $(call objects,rom.S): $(BUILD)/rom.gbc
 
+# The savestate, embedded the same way; an empty file when STATE is unset.
+ASFLAGS += -DGB_STATE_FILE='"$(BUILD)/gb.state"'
+$(call objects,state.S): $(BUILD)/gb.state
+$(BUILD)/gb.state: FORCE
+	@mkdir -p $(dir $@)
+	@if [ -n "$(STATE)" ]; then cmp -s "$(STATE)" $@ || cp "$(STATE)" $@; \
+	 else : > $@; fi
+
 # Copied so that the image path may hold spaces, and only when it changes.
 $(BUILD)/rom.gbc: FORCE
 	@test -n "$(ROM)" || { echo "set ROM=<file.gbc>" >&2; exit 1; }
@@ -72,8 +88,9 @@ HOST_APP_OBJECTS := $(foreach s,$(SOURCES),$(call host_object,$(s)))
 
 host: $(HOST)/$(APP)
 
+HOST_LIBS := $(if $(filter 1,$(PLAY)),-lX11)
 $(HOST)/$(APP): $(HOST_APP_OBJECTS) $(HOST_LIB_OBJECTS)
-	$(HOST_CXX) -o $@ $^
+	$(HOST_CXX) -o $@ $^ $(HOST_LIBS)
 
 define host_compile
 $(call host_object,$(1)): $(1) $(MAKEFILE_LIST)
@@ -85,6 +102,8 @@ $(foreach s,$(filter %.cpp,$(LIB_SOURCES)),$(eval $(call host_compile,$(s),$$(HO
 $(eval $(call host_compile,main.cpp,$$(HOST_CXX) -MMD -MP $$(CPPFLAGS) -O2 -std=gnu++20 -Wall -Wextra -Werror))
 $(eval $(call host_compile,rom.S,$$(HOST_CC) $$(APP_DEFS) -DGB_ROM_FILE='"$$(BUILD)/rom.gbc"'))
 $(call host_object,rom.S): $(BUILD)/rom.gbc
+$(eval $(call host_compile,state.S,$$(HOST_CC) $$(APP_DEFS) -DGB_STATE_FILE='"$$(BUILD)/gb.state"'))
+$(call host_object,state.S): $(BUILD)/gb.state
 $(call host_object,main.cpp): $(DEFS_STAMP)
 
 -include $(HOST_LIB_OBJECTS:.o=.d) $(HOST_APP_OBJECTS:.o=.d)

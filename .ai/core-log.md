@@ -74,3 +74,37 @@ Turning this into a gameplay number needs a known input path rather than a guess
 - User Test: NOT RUN
 
 ---
+## 3 COMMIT Unreleased 2026-10-21T20:44:12-07:00
+
+#### Coming From:
+
+Unreleased d21c72a
+
+#### Purpose:
+
+Measure gambatte on the A25 from a savestate the user took while walking the overworld, so that the number describes play rather than the menus and opening that entry 2 could only reach with a guessed input script.
+
+#### Outcome:
+
+The harness gained a playable host build and a way to start a run from a state. `make ROM=<file> PLAY=1 host` builds `gb_play`, which links the same core and opens a 640x576 X11 window, Xlib standing in for SDL2 because this machine has no SDL2 headers; it runs at 59.7275 Hz, takes the arrows as the d-pad, `Z` as B, `X` as A, `Enter` as Start and `Right Shift` as Select, and writes `gb_play.state` on `F5`, on `SIGUSR1`, on `SIGINT` or `SIGTERM`, on quit, and a rolling `gb_play.state.auto` every 600 frames, so a state is never far behind what is being played. `STATE=<file>` embeds a savestate through `state.S` the way `ROM=` embeds the cartridge and calls `retro_unserialize` after `retro_load_game`; with `STATE` unset the embedded file is empty and the program skips it, so entry 1 and entry 2's commands are unchanged. The user played from boot in that window and pressed `F5` at frame 7872: 59,629 bytes, SHA-256 `49d4a6971587ce6bcc6ca10ca321dbdfeffe225d7fa776fdb44aead0b90484cf`. The state was then proved interactive rather than assumed to be, since three runs of 1,800 frames from it ended `VIDEO=ba486472` with no input, `VIDEO=a0c145db` with right held and `VIDEO=ce76d09a` with down held. The gameplay run is 3,600 frames from that state with right, down, left and up walked in 600-frame blocks, `tests/zelda_walk.txt`, 120 presses; on the PC it is deterministic, two runs ending `VIDEO=42c0e370 AUDIO=b0c1088a` with 1,975,050 samples. The AE350 program is 1,477,622 bytes of text, 22,220 of data and 82,488 of bss, and the same run on it averaged 5,063 us a frame, minimum 4,265 and maximum 6,118, with no frame over the 16,742.7 us period, 330.6 percent, the same 1,975,050 samples and checksums equal to the PC's. Oracle of Seasons therefore plays at about 3.3 times full speed on the A25, and play costs about 11 percent more than the boot-to-intro figure of entry 2, 5,063 against 4,565 us, so entry 2's number understated play by roughly that much and this one replaces it as the figure to quote. The worst gameplay frame still used little more than a third of the frame period. The savestate is a derivative of the cartridge and stays in `build/`, not in this tree; the run is reproducible from the cartridge, the state and `tests/zelda_walk.txt`, and the state is identified by its SHA-256 above. The core-syntax audit re-read `.ai/core.md` and `.ai/core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `.ai/core.md` was not changed and that entries 1 and 2 were not rewritten, and validated this entry as number 3 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and only eligible paths in Files Modified.
+
+#### Next Steps:
+
+Player control is now measured, so the remaining unknown in the throughput question is double speed, which gambatte does not report through libretro and which a state taken inside a game known to use it would settle. The port still needs a picture, and that is the next real work: a raster and clock generator for 160x144 at 59.7275 Hz from a 4.194304 MHz dot clock instead of the NES's 256x240 at 60.0988 Hz, direct 15-bit colour in place of the palette-indexed path, an audio rate derived for the Game Boy rather than the NES's 48,828.125 Hz, and the pad mapped onto the Wii Classic Controllers that already feed TinyNES. Until then `gb_bench` remains a throughput harness that borrows TinyNES's AE350 SoC image, boot ROM and loader.
+
+#### Files Modified:
+
+- README.md
+- firmware/apps/gb_bench/Makefile
+- firmware/apps/gb_bench/main.cpp
+- firmware/apps/gb_bench/state.S
+- tests/gb_bench_expected.txt
+- tests/zelda_walk.txt
+
+#### Status:
+
+- Build: PASS
+- Deployment: PASS
+- User Test: NOT RUN
+
+---

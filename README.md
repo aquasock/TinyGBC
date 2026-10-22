@@ -40,7 +40,20 @@ make ROM=../../../third_party/roms/ucity.gbc        # the AE350 program
 ```
 
 `FRAMES=<n>`, `INPUT="<first>+<count>=<buttons> ..."` and `CHECK=<n>` are
-build-time options. The A25 program needs the AE350 SoC bitstream and the
+build-time options, and `STATE=<file>` embeds a savestate and loads it after
+the cartridge, so a run can start in the game rather than at boot.
+
+To play on the PC and take a savestate by hand:
+
+```
+make ROM=<file.gbc> PLAY=1 host     # build/firmware/apps/gb_play/host/gb_bench
+```
+
+It opens an X11 window at four times scale, runs at 59.7275 Hz, and takes
+arrows as the d-pad, `Z` as B, `X` as A, `Enter` as Start, `Right Shift` as
+Select, `F5` to save and `Esc` to quit. It writes `gb_play.state` on a save,
+on `SIGUSR1`, on a signal and on exit, and a rolling `gb_play.state.auto`
+every 600 frames. The A25 program needs the AE350 SoC bitstream and the
 boot ROM's loader, which are TinyNES's until this tree has its own.
 
 ## Licensing
