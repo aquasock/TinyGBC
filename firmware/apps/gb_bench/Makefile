@@ -61,6 +61,12 @@ endif
 ifeq ($(AUDIO),1)
 APP_DEFS += -DGB_AUDIO
 endif
+ifeq ($(PAD),1)
+APP_DEFS += -DGB_PAD
+endif
+ifeq ($(PADTRACE),1)
+APP_DEFS += -DGB_PAD -DGB_PAD_TRACE
+endif
 CPPFLAGS += $(APP_DEFS)
 
 include ../../rt/rt.mk

@@ -62,6 +62,21 @@ frame. The core's `AUDIO` checksum is untouched, so the PC and AE350 still
 compare. An unpaced run produces sound three times too fast for the DAC and
 will drop by design.
 
+`make PAD=1` reads a Wii Classic Controller and plays with it. The fabric
+polls the pad and the harness answers gambatte's input from it, falling back to
+the scripted table when no controller answers. **Bus 0 is on USB-A port 2's
+data pair** — D+ is SDA (ball H13) and D- is SCL (G13) — and buses 1 to 3 stay
+on PMOD0's other pairs, so a controller on PMOD0's first pair is no longer
+read. The controller's own buttons, measured from its reports rather than taken
+from a table: byte 4 carries R, Plus, Home, Minus, L, Down and Right in bits 1
+to 7, byte 5 carries Up, Left, ZR, X, A, Y, B and ZL in bits 0 to 7, all active
+low. A is the Game Boy's A, B its B, Plus Start, Minus Select, and the d-pad the
+d-pad.
+
+`FRAMES=0` runs until **HOME and Minus** are held together, which is how a play
+session ends; `PADTRACE=1` prints the raw report whenever it changes, which is
+how the button bits above were measured.
+
 ## Building and running
 
 ```
@@ -75,7 +90,7 @@ make ROM=../../../third_party/roms/ucity.gbc        # the AE350 program
 `FRAMES=<n>`, `INPUT="<first>+<count>=<buttons> ..."` and `CHECK=<n>` are
 build-time options, and `STATE=<file>` embeds a savestate and loads it after
 the cartridge, so a run can start in the game rather than at boot.
-`DISPLAY=1`, `PACE=1` and `AUDIO=1` are described above.
+`DISPLAY=1`, `PACE=1`, `AUDIO=1`, `PAD=1`, `PADTRACE=1` and `FRAMES=0` are described above.
 
 To play on the PC and take a savestate by hand:
 

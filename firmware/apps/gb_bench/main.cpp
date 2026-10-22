@@ -87,6 +87,16 @@ extern "C" const unsigned char gb_state[], gb_state_end[];
 #define GB_AUDIO_OUT 1
 #endif
 
+/* GB_PAD prints what PMOD0's first Wii extension bus sees, which is what says
+ * whether a controller is reaching the fabric at all and through which wiring.
+ * The fabric polls the pad itself; this only reads its registers. */
+#if defined(GB_PAD) && defined(__riscv)
+#define GB_PAD_OUT 1
+#endif
+#if GB_FRAMES == 0 && !defined(GB_PAD_OUT)
+#error GB_FRAMES=0 runs until HOME and MINUS, so it needs GB_PAD
+#endif
+
 namespace {
 
 #ifdef __riscv
@@ -351,6 +361,96 @@ void audio_resample(const int16_t *data, size_t frames)
 }
 #endif
 
+#ifdef GB_PAD_OUT
+/* The pad the fabric polls on bus 0. Bytes 4 and 5 of its report carry
+ * fifteen active-low buttons and the left stick is bytes 0 and 1; reading
+ * DATA also takes bytes 4 and 5 for the DATA2 read that follows. */
+uint32_t pad_status, pad_data, pad_data2;
+uint16_t pad_bits; /* RETRO_DEVICE_ID_JOYPAD_* bits */
+bool pad_ready;
+#ifdef GB_PAD_TRACE
+/* Print every change of the raw report, so a button can be identified by the
+ * bit it sets rather than by a table. */
+uint32_t pad_last_data, pad_last_data2;
+bool pad_last_valid;
+#endif
+
+/* This controller's real layout, measured from its own reports rather than
+ * taken from WiiBrew's table, which did not match it (core-log entry 13): the
+ * trace of one press per button gave the bits below. Both bytes are active
+ * low, byte 4 in DATA2 bits 7:0 and byte 5 in bits 15:8. */
+enum {
+	PAD_B4_R = 1u << 1,
+	PAD_B4_PLUS = 1u << 2,
+	PAD_B4_HOME = 1u << 3,
+	PAD_B4_MINUS = 1u << 4,
+	PAD_B4_L = 1u << 5,
+	PAD_B4_DOWN = 1u << 6,
+	PAD_B4_RIGHT = 1u << 7,
+	PAD_B5_UP = 1u << 0,
+	PAD_B5_LEFT = 1u << 1,
+	PAD_B5_ZR = 1u << 2,
+	PAD_B5_X = 1u << 3,
+	PAD_B5_A = 1u << 4,
+	PAD_B5_Y = 1u << 5,
+	PAD_B5_B = 1u << 6,
+	PAD_B5_ZL = 1u << 7,
+};
+
+void pad_poll(void)
+{
+	const unsigned present = TN_PAD_PRESENT | TN_PAD_CLASSIC;
+
+	pad_status = TN_PAD_STATUS(0);
+	pad_data = TN_PAD_DATA(0);
+	pad_data2 = TN_PAD_DATA2(0);
+#ifdef GB_PAD_TRACE
+	if (!pad_last_valid || pad_data != pad_last_data ||
+	    pad_data2 != pad_last_data2) {
+		printf("TinyGBC GB PADTRACE DATA=%08x DATA2=%08x B4=%02x B5=%02x\n",
+		       (unsigned)pad_data, (unsigned)pad_data2,
+		       (unsigned)(~pad_data2 & 0xffu),
+		       (unsigned)((~pad_data2 >> 8) & 0xffu));
+		pad_last_data = pad_data;
+		pad_last_data2 = pad_data2;
+		pad_last_valid = true;
+	}
+#endif
+	pad_bits = 0;
+	pad_ready = (pad_status & present) == present;
+	if (!pad_ready)
+		return;
+
+	const unsigned b4 = ~pad_data2 & 0xffu;
+	const unsigned b5 = (~pad_data2 >> 8) & 0xffu;
+
+	if (b5 & PAD_B5_A)
+		pad_bits |= 1u << RETRO_DEVICE_ID_JOYPAD_A;
+	if (b5 & PAD_B5_B)
+		pad_bits |= 1u << RETRO_DEVICE_ID_JOYPAD_B;
+	if (b4 & PAD_B4_PLUS)
+		pad_bits |= 1u << RETRO_DEVICE_ID_JOYPAD_START;
+	if (b4 & PAD_B4_MINUS)
+		pad_bits |= 1u << RETRO_DEVICE_ID_JOYPAD_SELECT;
+	if (b5 & PAD_B5_UP)
+		pad_bits |= 1u << RETRO_DEVICE_ID_JOYPAD_UP;
+	if (b4 & PAD_B4_DOWN)
+		pad_bits |= 1u << RETRO_DEVICE_ID_JOYPAD_DOWN;
+	if (b5 & PAD_B5_LEFT)
+		pad_bits |= 1u << RETRO_DEVICE_ID_JOYPAD_LEFT;
+	if (b4 & PAD_B4_RIGHT)
+		pad_bits |= 1u << RETRO_DEVICE_ID_JOYPAD_RIGHT;
+}
+
+/* HOME and MINUS together end a run built with FRAMES=0. */
+bool pad_quit(void)
+{
+	const unsigned b4 = ~pad_data2 & 0xffu;
+
+	return pad_ready && (b4 & PAD_B4_HOME) && (b4 & PAD_B4_MINUS);
+}
+#endif
+
 // What the core last handed over, recorded in the callback and read after
 // retro_run has returned.
 const void *frame_ptr;
@@ -395,6 +495,10 @@ int16_t gb_input_state(unsigned port, unsigned device, unsigned index, unsigned 
 #ifdef GB_PLAY
 	return (play_keys >> id) & 1u;
 #else
+#ifdef GB_PAD_OUT
+	if (pad_ready)
+		return (pad_bits >> id) & 1u;
+#endif
 	return (pad_state(frame_no) >> id) & 1u;
 #endif
 }
@@ -702,6 +806,7 @@ int main()
 	if (state_size)
 		printf("TinyGBC GB STATE=%u LOADED\n", (unsigned)state_size);
 
+	/* FRAMES=0 means run until HOME and MINUS are held together. */
 	const unsigned frames = GB_FRAMES;
 	/* 70224 dots a frame at 4194304 Hz, in microseconds. */
 	const uint64_t period_us = 70224ull * 1000000ull / 4194304ull;
@@ -710,6 +815,14 @@ int main()
 	uint64_t total_us = 0, min_us = ~0ull, max_us = 0;
 	uint64_t total_samples = 0;
 	unsigned over = 0;
+#ifdef GB_PAD_OUT
+	/* The register map's buses are zero based: bus 0 is PMOD0's Digilent
+	 * pins 1 and 7, the pair a Classic Controller was read on before. */
+	for (unsigned pad = 0; pad < 4; pad++)
+		printf("TinyGBC GB PAD%u STATUS=%08x IDENT=%08x\n", pad + 1,
+		       (unsigned)TN_PAD_STATUS(pad),
+		       (unsigned)TN_PAD_IDENT(pad));
+#endif
 #ifdef GB_AUDIO_OUT
 	/* Playback starts here: the FIFO is emptied and the unit enabled, then
 	 * the resampler feeds it one pair per output sample. The unit's counters
@@ -743,10 +856,18 @@ int main()
 	uint64_t iv_us = 0, iv_max = 0;
 	unsigned iv_frames = 0;
 
-	for (unsigned f = 0; f < frames; f++) {
+	unsigned ran = 0;
+
+	for (unsigned f = 0; frames == 0 || f < frames; f++) {
 		frame_no = f;
 		frame_ptr = nullptr;
 		audio_copy_frames = 0;
+#ifdef GB_PAD_OUT
+		pad_poll();
+		if (frames == 0 && pad_quit())
+			break;
+#endif
+		ran = f + 1;
 
 		uint64_t a = ticks();
 		retro_run();
@@ -855,18 +976,26 @@ int main()
 	}
 
 	if (iv_frames)
-		printf("TinyGBC GB F=%u AVG=%u MAX=%u VIDEO=%08x AUDIO=%08x\n", frames,
+		printf("TinyGBC GB F=%u AVG=%u MAX=%u VIDEO=%08x AUDIO=%08x\n", ran,
 		       (unsigned)(iv_us / iv_frames), (unsigned)iv_max,
 		       (unsigned)video_crc, (unsigned)audio_crc);
 
-	uint64_t avg = total_us / frames;
+	uint64_t avg = total_us / (ran ? ran : 1);
 	unsigned speed_x10 = (unsigned)(period_us * 1000 / avg);
 	printf("TinyGBC GB FRAMES=%u AVG=%u MIN=%u MAX=%u OVER=%u SPEED=%u.%u%%"
 	       " SAMPLES=%u VIDEO=%08x AUDIO=%08x\n",
-	       frames, (unsigned)avg, (unsigned)min_us, (unsigned)max_us, over,
+	       ran, (unsigned)avg, (unsigned)min_us, (unsigned)max_us, over,
 	       speed_x10 / 10, speed_x10 % 10, (unsigned)total_samples,
 	       (unsigned)video_crc, (unsigned)audio_crc);
 
+#ifdef GB_PAD_OUT
+	/* The register map's buses are zero based: bus 0 is PMOD0's Digilent
+	 * pins 1 and 7, the pair a Classic Controller was read on before. */
+	for (unsigned pad = 0; pad < 4; pad++)
+		printf("TinyGBC GB PAD%u STATUS=%08x IDENT=%08x\n", pad + 1,
+		       (unsigned)TN_PAD_STATUS(pad),
+		       (unsigned)TN_PAD_IDENT(pad));
+#endif
 #ifdef GB_AUDIO_OUT
 	{
 		const uint32_t st = TN_AUDIO_STATUS;
@@ -877,7 +1006,7 @@ int main()
 		       audio_fix, (unsigned)(TN_AUDIO_DROPS - audio_drops0),
 		       (unsigned)((st >> 16) - audio_under0),
 		       (unsigned)TN_AUDIO_LEVEL(st),
-		       (unsigned)(audio_us / frames));
+		       (unsigned)(audio_us / (ran ? ran : 1)));
 	}
 #endif
 #ifdef GB_DISPLAY

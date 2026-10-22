@@ -438,3 +438,37 @@ None.
 - User Test: N/A
 
 ---
+
+## 13 COMMIT Unreleased 2026-10-22T09:42:37-07:00
+
+#### Coming From:
+
+Unreleased dd378bb
+
+#### Purpose:
+
+Give the port a real pad, so the game is played with a Wii Classic Controller rather than a scripted table.
+
+#### Outcome:
+
+The controller first answered on PMOD0 pair 1 through Adafruit's adapter, `PRESENT|CLASSIC` with identity `00 00 A4 20` and no failed transfers, which proved the adapter path. Moving it to the Cyberdeck's 40-pin header then failed at the board: with that header mated to the empty SDRAM connector and its 3.3 V rail fed from a PMOD, the board would not power up at all and recovered as soon as the HAT was lifted, so those header pins are not inert I/O; block RAM and the SDRAM byte lanes and address lines then passed, and BRD-008 was revised with the observation. The pad moved instead to USB-A port 2, whose data pair is two free LVCMOS33 pins: `ae350_soc.sv` gained `usb_sda` and `usb_scl`, `wii_pads` bus 0 moved onto D+ (H13) and D- (G13), and buses 1 to 3 stayed on PMOD0's remaining pairs, so PMOD0's first pair is no longer read. The design packs to a 4,762,092-byte `.bin` with SHA-256 `6f3ed57f1064630e94555a957fbd8dc779fcd6c501b418155d310d07d2afb8bf`, at 87.44 MHz on the bus and 103.82 on the pixel clock, with the AE350 hop, the ten single-clock video block RAMs and the SPINE16+SPINE25 pixel clock unchanged. The adapter is fed from VBUS at 5 V with no added parts: its 10K pull-ups divide against the dock's 15K USB host pull-downs, so the pin sees about 3.0 V against a 2.31 V input threshold, and the first probe on that wiring returned `PRESENT|CLASSIC` with 25,124 reads and no failures. The button decode was then corrected the hard way: the WiiBrew table this first build followed is wrong for this controller, and the user's play test showed R moving the character down, A up and Y left. `PADTRACE` was added to print every change of the pad's raw report, the user pressed one button at a time in a stated order, and the measured layout is byte 4 bit 1 R, 2 Plus, 3 Home, 4 Minus, 5 L, 6 Down, 7 Right and byte 5 bit 0 Up, 1 Left, 2 ZR, 3 X, 4 A, 5 Y, 6 B, 7 ZL, all active low, recorded as WII-003; the analog travel of L and R sets no bit, only their click. `gb_bench` gained `PAD=1`, `PADTRACE=1` and `FRAMES=0`, the last meaning run until HOME and Minus are held, and the play build with `DISPLAY=1 PACE=1 AUDIO=1 PAD=1 FRAMES=0` was loaded and played: the session ended with 3,459,165 audio pairs, 0 drops and 0 underruns, `LATE=0`, `PIXELS=500275 BITS=7fff`, 3,873 frames handed over in 4,250 display frames and 344 percent of full speed, and the user passed the pad. The scripted benchmark build is unaffected, its checksums unchanged, because the pad decode only replaces the table's input when a controller answers. The core-syntax audit re-read `.ai/core.md` and `.ai/core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `.ai/core.md` was not changed and that entries 1 to 12 were not rewritten, and validated this entry as number 13 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and only eligible paths in Files Modified.
+
+#### Next Steps:
+
+The left stick is still undecoded: its bytes 0 and 1 move in the trace, but neither axis has been mapped or given a deadzone, and doing it needs one more guided trace with the stick held in each direction. After that the port has a picture, a sound and a pad, and what is left belongs to the machine rather than the emulator: a savestate write path on the A25, so a play session can be resumed, and the inherited desk layer and link mode that still sit over the picture.
+
+#### Files Modified:
+
+- README.md
+- firmware/apps/gb_bench/Makefile
+- firmware/apps/gb_bench/main.cpp
+- fpga/ae350_soc/ae350_soc.cst
+- fpga/ae350_soc/ae350_soc.sv
+
+#### Status:
+
+- Build: PASS
+- Deployment: PASS
+- User Test: PASS
+
+---
