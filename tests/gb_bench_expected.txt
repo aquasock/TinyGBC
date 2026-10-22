@@ -1,0 +1,10 @@
+# gb_bench on the PC: gambatte d9d6cd0, uCity 1.3, 1800 frames, no input,
+# built by firmware/apps/gb_bench/Makefile with the defaults.
+TinyGBC GB F=1800 AVG=64 MAX=77 VIDEO=aaddaa41 AUDIO=a36b5633
+TinyGBC GB FRAMES=1800 AVG=74 MIN=54 MAX=195 OVER=0 SPEED=22624.3% SAMPLES=987948 VIDEO=aaddaa41 AUDIO=a36b5633
+# second run, to show the checksums repeat:
+TinyGBC GB FRAMES=1800 AVG=74 MIN=54 MAX=245 OVER=0 SPEED=22624.3% SAMPLES=987948 VIDEO=aaddaa41 AUDIO=a36b5633
+# On the A25 (750 MHz), same program, same cartridge, loaded with
+# tools/load_ae350.py --tinytang after tangload of TinyNES's ae350_soc.bin
+# (SHA-256 69195778a66d006eda79432051d0ef8d523c7985eeb4077b4a7c61105111e1f4):
+TinyGBC GB FRAMES=1800 AVG=4110 MIN=3697 MAX=7283 OVER=0 SPEED=407.3% SAMPLES=987948 VIDEO=aaddaa41 AUDIO=a36b5633
