@@ -175,3 +175,34 @@ The picture needs two things before it can be called working: a way to write fra
 - User Test: NOT RUN
 
 ---
+## 5 COMMIT Unreleased 2026-10-21T21:35:10-07:00
+
+#### Coming From:
+
+Unreleased ee8e687
+
+#### Purpose:
+
+Verify the retargeted video unit by simulation, since entry 4 proved only that it synthesises and times, and rebuild the bitstream from whatever the simulation found.
+
+#### Outcome:
+
+`tools/sim_video_gb.sh` runs `fpga/ae350_soc/tb/video_gb_tb.sv` under Icarus Verilog and fails unless the testbench prints `PASS`. The testbench drives the unit the way the top level does: a 1650x750 raster on `pix_clk` at 74.25 MHz, an AHB write of CTRL to select the frame buffers, and an SDRAM video model that answers each request with 160 halfwords of colour for the line `vaddr` names, line L and pixel X carrying `{L[4:0], X[4:0], 5'd1}` so every source pixel is identifiable, and it captures the RGB output into a frame image. The first run found a defect that the synthesis and timing could not: `vindex` was still seven bits wide in `video.sv`'s port list even though `ahb_sdram.sv` had been widened to eight, so only 128 of the 160 words a line carries could address the line buffer and pixels 128 to 159 of every line aliased onto 0 to 31. With the port widened to eight bits the testbench passes eleven checks: the centre pixel's colour is exact, a 5x5 block of one source pixel is uniform across three columns and one row beyond the centre, the next column carries the next source pixel, the next row carries the next source line, a point 40 columns left of centre carries the source pixel 8 columns left, both side bars are black, and the frame is fetched as 144 lines of 160 halfwords. Two measurements from the simulation are worth carrying forward because nothing states them. The RGB output corresponds to the raster eight clocks earlier, not the four that the unit's own comment claims, which is how the testbench associates a colour with a screen position; the mapping is right but the comment is not. And the picture settles two frames after the CTRL write rather than one: the frame after the write still shows colour bars, and the picture appears from the second. Rebuilding with seed 4 and the corrected port gives 92.26 MHz on the bus against 75 and 101.05 on the pixel clock against 74.25, both better than entry 4's 84.10 and 101.21, with the dedicated AE350 hop present, ten video block RAMs each on one clock, and the pixel clock again on SPINE16 and SPINE25; the bitstream is 4,762,092 bytes with SHA-256 `9be1b0b7a842485702ebd0dee3b6ae8d77200e5eb3f62994dcaf7f8bf3513f1e`, and entry 4's `66f960f0` image, built before this fix, is superseded. Nothing was loaded onto the board and the A25 still writes no frames, so the picture path is now verified in simulation and by synthesis but has never been through a display. The core-syntax audit re-read `.ai/core.md` and `.ai/core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `.ai/core.md` was not changed and that entries 1 to 4 were not rewritten, and validated this entry as number 5 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and only eligible paths in Files Modified.
+
+#### Next Steps:
+
+The A25 needs to put a frame in the buffer: `gb_bench` converting gambatte's RGB565 to RGB555 into the buffer not being shown, writing the D-cache back and handing it over at the vertical blank, which is what `nes_bench` does for FCEUmm in TinyNES and what makes the checksums already held in `tests/gb_bench_expected.txt` a test of the video unit as well as the core. Deploying is then a `tangload` of the bitstream above and a run of that program, and the first thing to expect is the two-frame settle the simulation measured.
+
+#### Files Modified:
+
+- fpga/ae350_soc/tb/video_gb_tb.sv
+- fpga/ae350_soc/video.sv
+- tools/sim_video_gb.sh
+
+#### Status:
+
+- Build: PASS
+- Deployment: NOT RUN
+- User Test: NOT RUN
+
+---

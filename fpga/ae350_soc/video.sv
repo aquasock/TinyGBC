@@ -90,7 +90,7 @@ module video #(
     output reg         vstart,
     output reg  [24:8] vaddr,
     input  wire        vvalid,
-    input  wire [6:0]  vindex,
+    input  wire [7:0]  vindex,
     input  wire [15:0] vdata,
     input  wire        vdone,
 
