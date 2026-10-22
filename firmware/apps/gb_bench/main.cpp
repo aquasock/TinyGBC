@@ -818,6 +818,7 @@ int main()
 #ifdef GB_PAD_OUT
 	/* The register map's buses are zero based: bus 0 is PMOD0's Digilent
 	 * pins 1 and 7, the pair a Classic Controller was read on before. */
+	printf("TinyGBC GB PADLINES=%08x\n", (unsigned)TN_PAD_LINES);
 	for (unsigned pad = 0; pad < 4; pad++)
 		printf("TinyGBC GB PAD%u STATUS=%08x IDENT=%08x\n", pad + 1,
 		       (unsigned)TN_PAD_STATUS(pad),
@@ -991,6 +992,7 @@ int main()
 #ifdef GB_PAD_OUT
 	/* The register map's buses are zero based: bus 0 is PMOD0's Digilent
 	 * pins 1 and 7, the pair a Classic Controller was read on before. */
+	printf("TinyGBC GB PADLINES=%08x\n", (unsigned)TN_PAD_LINES);
 	for (unsigned pad = 0; pad < 4; pad++)
 		printf("TinyGBC GB PAD%u STATUS=%08x IDENT=%08x\n", pad + 1,
 		       (unsigned)TN_PAD_STATUS(pad),

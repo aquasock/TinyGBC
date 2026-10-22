@@ -99,10 +99,14 @@ module wii_pads #(
     wire word = hsize == 3'd2 && haddr[1:0] == 2'b00;
     wire is_id = haddr[11:2] == 10'd0;
     wire is_ctrl = haddr[11:2] == 10'd1;
+    // 0x008: the two pin levels of every bus, sda in bits 7:4 and scl in
+    // 3:0, read straight off the pads. A bus with no pull-ups reads 0, and an
+    // idle bus with a device on it reads 0xf.
+    wire is_lines = haddr[11:2] == 10'd2;
     wire is_pad = haddr[11:6] == 6'd0 && haddr[5:4] != 2'd0;
     wire [1:0] pad = haddr[5:4] - 2'd1;
     wire is_pad3 = haddr[11:4] == 8'h04;
-    wire ok = word && (hwrite ? is_ctrl : (is_id || is_ctrl || is_pad || is_pad3));
+    wire ok = word && (hwrite ? is_ctrl : (is_id || is_ctrl || is_lines || is_pad || is_pad3));
     wire [1:0] pad_n = is_pad3 ? 2'd3 : pad;
     reg err2 = 1'b0;
 
@@ -138,6 +142,8 @@ module wii_pads #(
                 end else if (accept) begin
                     if (is_id)
                         hrdata <= ID_VALUE;
+                    else if (is_lines)
+                        hrdata <= {24'd0, sda_in, scl_in};
                     else if (is_ctrl)
                         hrdata <= {20'd0, ctrl_write && hwdata[11:0] != 12'd0 ?
                                    hwdata[11:0] : quarter};

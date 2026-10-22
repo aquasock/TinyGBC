@@ -472,3 +472,36 @@ The left stick is still undecoded: its bytes 0 and 1 move in the trace, but neit
 - User Test: PASS
 
 ---
+
+## 14 COMMIT Unreleased 2026-10-22T11:28:43-07:00
+
+#### Coming From:
+
+Unreleased e2a00b6
+
+#### Purpose:
+
+Find out why the pad went silent when the cable was rebuilt, and make the next such fault a measurement instead of a guess.
+
+#### Outcome:
+
+The silence was two faults and one mistake of mine. The mistake: a build started to swap SDA and SCL was interrupted at the tool level but finished anyway, replacing `build/ae350_soc/ae350_soc.bin` with a bitstream whose pins were crossed, while the source had already been reverted; every deploy after that loaded `2ec691d3`, so a new cable, a new adapter, the other USB port and the old hardware in a control test all failed identically, and it was found only by comparing the hash the deploy reported against the hash the source builds. Rebuilt from the reverted source the image came back byte-identical to the one that had worked, `6f3ed57f`, which is its own confirmation. The pad still failed with it, and the fault there was the old cable: its data pair was open. To stop guessing, `wii_pads` gained a register at offset 0x008, `TN_PAD_LINES`, that reads the four buses' pad levels, SDA in bits 7:4 and SCL in 3:0; its first build trapped with an AHB error because the new address was decoded in the read path but not in the access-validity term, and with `is_lines` added to that term it reads `ff` on an idle PMOD bus and `00` on the USB pair while nothing powered is on it, where the dock's 15K pull-downs hold both lines low. With a cable whose green went to the adapter's SDA and white to its SCL, the pair read `ff`, the probe returned `PRESENT|CLASSIC` with identity `00 00 A4 20` and 14,494 reads without a failure, and the play build then ran with the pad, the picture and the sound; the user reported every button working, which closes the mapping entry 13 measured. Two lessons are worth carrying: a tool-level interruption does not stop a build, so the deployed image's hash is checked against the source that claims to produce it before any conclusion is drawn from the hardware, and a bus with no pull-ups is distinguishable from a bus that is merely not answering, which is what the line-level register makes visible. The core-syntax audit re-read `.ai/core.md` and `.ai/core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `.ai/core.md` was not changed and that entries 1 to 13 were not rewritten, and validated this entry as number 14 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and only eligible paths in Files Modified.
+
+#### Next Steps:
+
+The left stick is still the one input not decoded: its bytes 0 and 1 move in the trace but no axis has been mapped or given a deadzone, and one guided trace with the stick held in each direction settles it. Then the port has a picture, a sound and a complete pad, and what is left belongs to the machine: a savestate write path on the A25 so a session resumes rather than restarts, and the inherited desk layer and link mode that still sit over the picture.
+
+#### Files Modified:
+
+- README.md
+- firmware/apps/gb_bench/main.cpp
+- firmware/include/tinygbc.h
+- fpga/ae350_soc/wii_pads.sv
+
+#### Status:
+
+- Build: PASS
+- Deployment: PASS
+- User Test: PASS
+
+---

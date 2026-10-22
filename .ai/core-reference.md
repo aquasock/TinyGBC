@@ -801,7 +801,7 @@ Records are grouped in the order of the topic catalog, and numbered within each 
   sources:
     - "nestang, src/boards/console.cst: 'USB1 and USB2 (usb1 is on the left)' with the four IO_LOC/IO_PORT lines"
     - "nestang, src/nestang_top.sv: usb_hid_host and usb_hid_host2 instantiated on usb1_dn/dp and usb2_dn/dp under ifdef USB1/USB2"
-  verification: "Read from the constraint file and the instantiation, and consistent with the observed behaviour of the ports under nestang."
+  verification: "Read from the constraint file and the instantiation, and consistent with the observed behaviour of the ports under nestang. Revised 2026-10-22 (core-log entry 14): the dock schematic (PERIPHERALS, pages 7 and 9) shows USB_A2, the populated port, on R59/R60 to H13/G13 and USB_A1 on R55/R56 to M15/M16 with those two 0R links not fitted, so only the H13/G13 pair reaches the FPGA on a stock dock; each pair carries a 15K pull-down to ground on the dock (R129/R130 for H13/G13) and passes through SW4, which selects the FPGA or the BL616 debugger. This tree uses that pair as the pad's first I2C bus, so the 15K pull-downs divide an adapter's 10K pull-ups down to about 3.0V at the pin, and an unpowered or unconnected pair reads 0 where a live one reads 1; TN_PAD_LINES exposes those levels (core-log entry 14)."
 
 - record_id: BRD-004
   kind: BOARD

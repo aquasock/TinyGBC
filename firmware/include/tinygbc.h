@@ -94,6 +94,7 @@ volatile uint32_t *tn_host_reg(uint32_t offset);
  * active low. A pad may answer without identifying as a Classic Controller;
  * check both PRESENT and CLASSIC before decoding its data. */
 #define TN_PAD_ID          TN_REG(0x40000) /* read: TN_PAD_ID_VALUE */
+#define TN_PAD_LINES       TN_REG(0x40008) /* read: pin levels, SDA 7:4, SCL 3:0 */
 #define TN_PAD_CTRL        TN_REG(0x40004) /* read/write: quarter bit clocks; write restarts masters */
 #define TN_PAD_STATUS(n)   TN_REG(0x40010 + 0x10u * (n))
 #define TN_PAD_DATA(n)     TN_REG(0x40014 + 0x10u * (n))

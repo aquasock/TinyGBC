@@ -75,7 +75,10 @@ d-pad.
 
 `FRAMES=0` runs until **HOME and Minus** are held together, which is how a play
 session ends; `PADTRACE=1` prints the raw report whenever it changes, which is
-how the button bits above were measured.
+how the button bits above were measured. `TN_PAD_LINES` (`0xe8040008`, SDA in
+bits 7:4 and SCL in 3:0) reads the four buses' pin levels directly: the PMOD
+pairs idle high, and the USB pair idles low until a powered adapter's pull-ups
+reach it, which is what tells a wiring fault from a protocol one.
 
 ## Building and running
 
