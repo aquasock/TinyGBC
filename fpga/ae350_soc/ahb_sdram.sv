@@ -136,7 +136,10 @@ module ahb_sdram #(
     reg [3:0] state = S_INIT;
     reg [3:0] after_wait = S_IDLE;
     reg [15:0] wait_count = INIT_CYCLES[15:0];
-    reg [6:0] step = 7'd0;
+    reg [7:0] step = 8'd0;
+    // The column of the video line being read: base + 0 to 159. A line starts
+    // on a 256-word boundary, so the 160 halfwords never cross the row.
+    reg [8:0] vcol = 9'd0;
     reg op_write = 1'b0;
     reg op_video = 1'b0;
     reg video_pending = 1'b0;
@@ -291,7 +294,8 @@ module ahb_sdram #(
                     {sdram_cs_n, sdram_ras_n, sdram_cas_n, sdram_we_n} <= CMD_ACTIVE;
                     sdram_ba <= op_addr[11:10];
                     sdram_a <= op_addr[24:12];
-                    step <= 7'd0;
+                    step <= 8'd0;
+                    vcol <= {op_addr[9:8], 7'd0};
                     wait_count <= 16'd0;
                     after_wait <= op_video ? S_VREAD : op_write ? S_WRITE : S_READ;
                     state <= S_WAIT;
@@ -307,12 +311,15 @@ module ahb_sdram #(
                 end
                 S_VREAD: begin
                     {sdram_cs_n, sdram_ras_n, sdram_cas_n, sdram_we_n} <= CMD_READ;
-                    sdram_a <= {4'b0000, op_addr[9:8], step};
+                    sdram_a <= {4'b0000, vcol};
                     pipe_valid[0] <= 1'b1;
                     pipe_video[0] <= 1'b1;
                     pipe_index[0] <= step;
+                    vcol <= vcol + 1'b1;
                     step <= step + 1'b1;
-                    if (step == 7'd127)
+                    // 160 halfwords, so that index 159 arrives and vdone fires
+                    // (core-log entry 4 widened the line and missed this loop).
+                    if (step == 8'd159)
                         state <= S_PRECHARGE;
                 end
                 S_WRITE: begin

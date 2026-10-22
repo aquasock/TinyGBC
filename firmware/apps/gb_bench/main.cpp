@@ -227,27 +227,48 @@ const char *dump_dir;
  * green fields move; note that libretro's own 0RGB1555 puts red at 14:10 and
  * blue at 4:0, the other way round, so writing that format straight through
  * would show blue where red belongs. */
+/* The core reports 160x144 (AV in the CORE line); the destination format is
+ * the video unit's. */
+enum { DISPLAY_MAX_W = 160 };
+
 [[maybe_unused]] uint16_t display_pixel(uint16_t c)
 {
 	return (uint16_t)((c >> 11) | (((c >> 6) & 0x1fu) << 5) |
 			  ((c & 0x1fu) << 10));
 }
 
-#ifndef __riscv
-/* The PC has no frame buffer; the conversion is done into this so that its
- * checksum can be compared with the AE350's. */
-uint16_t display_fb[160 * 144];
-#endif
+/* Fold the converted frame into crc, a row at a time. The checksum is taken
+ * from the conversion itself rather than from a destination, so it is the
+ * same on both builds no matter which frames reached a frame buffer. */
+[[maybe_unused]] uint32_t display_crc(const void *ptr, unsigned w, unsigned h,
+				      size_t pitch, uint32_t crc, bool want)
+{
+	uint16_t row_out[DISPLAY_MAX_W];
+	const uint8_t *src = static_cast<const uint8_t *>(ptr);
 
-/* Convert one frame into dst, whose pixels are stride apart, and fold the
- * converted pixels into crc when asked. The checksum is taken from the
- * destination, so on the AE350 it covers what the video unit will fetch. */
-[[maybe_unused]] uint32_t display_convert(const void *ptr, unsigned w,
-					  unsigned h, size_t pitch, uint16_t *dst,
-					  size_t stride, uint32_t crc, bool want_crc)
+	if (!want)
+		return crc;
+	if (w > DISPLAY_MAX_W)
+		w = DISPLAY_MAX_W;
+	for (unsigned y = 0; y < h; y++) {
+		const uint16_t *row =
+			reinterpret_cast<const uint16_t *>(src + y * pitch);
+
+		for (unsigned x = 0; x < w; x++)
+			row_out[x] = display_pixel(row[x]);
+		crc = crc_update(crc, row_out, w * sizeof(uint16_t));
+	}
+	return crc;
+}
+
+/* Convert the frame into dst, whose pixels are stride apart. */
+[[maybe_unused]] void display_store(const void *ptr, unsigned w, unsigned h,
+				    size_t pitch, uint16_t *dst, size_t stride)
 {
 	const uint8_t *src = static_cast<const uint8_t *>(ptr);
 
+	if (w > DISPLAY_MAX_W)
+		w = DISPLAY_MAX_W;
 	for (unsigned y = 0; y < h; y++) {
 		const uint16_t *row =
 			reinterpret_cast<const uint16_t *>(src + y * pitch);
@@ -255,10 +276,7 @@ uint16_t display_fb[160 * 144];
 
 		for (unsigned x = 0; x < w; x++)
 			out[x] = display_pixel(row[x]);
-		if (want_crc)
-			crc = crc_update(crc, out, w * sizeof(uint16_t));
 	}
-	return crc;
 }
 #endif
 
@@ -626,7 +644,15 @@ int main()
 #if defined(__riscv)
 	uint64_t show_us = 0;
 	unsigned shown = 0;
-	uint32_t last_vblank = TN_VIDEO_FRAMES;
+	/* The buffer handed over but not yet named by STATUS, 2 for none: a CTRL
+	 * write takes effect at the next vertical blank, so until STATUS shows
+	 * it, that buffer may be the one the unit is about to fetch. */
+	unsigned pending = 2;
+	/* LATE and FRAMES count from FPGA configuration, not from this program, so
+	 * what is reported is their movement across the run. */
+	const uint32_t video_frames0 = TN_VIDEO_FRAMES;
+	const uint32_t video_late0 = TN_VIDEO_LATE;
+	const uint32_t video_pixels0 = TN_VIDEO_PIXELS;
 #endif
 #endif
 
@@ -653,39 +679,39 @@ int main()
 #endif
 		}
 #ifdef GB_DISPLAY
+		if (frame_ptr)
+			fb_crc = display_crc(frame_ptr, frame_w, frame_h, frame_pitch,
+					     fb_crc, f % GB_CHECK == 0);
+#if defined(__riscv)
 		if (frame_ptr) {
-#if defined(__riscv)
-			/* The buffer STATUS names is the one being fetched, so the other
-			 * one is free to write. */
-			const unsigned target =
-				(TN_VIDEO_STATUS & TN_VIDEO_BUFFER) ? 0u : 1u;
-			uint16_t *dst = reinterpret_cast<uint16_t *>(
-				TN_VIDEO_FB(target));
-			const size_t stride =
-				TN_VIDEO_FB_STRIDE / TN_VIDEO_PIXEL_BYTES;
-			uint64_t s0 = ticks();
-#else
-			uint16_t *dst = display_fb;
-			const size_t stride = frame_w;
-#endif
-			fb_crc = display_convert(frame_ptr, frame_w, frame_h,
-						 frame_pitch, dst, stride, fb_crc,
-						 f % GB_CHECK == 0);
-#if defined(__riscv)
-			/* One handover a vertical blank at most: the harness runs at
-			 * about four times the Game Boy's rate, so flipping every frame
-			 * would only throw pictures away. The picture settles two frames
-			 * after the write (core-log entry 5). */
-			if (TN_VIDEO_FRAMES != last_vblank) {
-				last_vblank = TN_VIDEO_FRAMES;
+			const unsigned shown_buf =
+				(TN_VIDEO_STATUS & TN_VIDEO_BUFFER) ? 1u : 0u;
+			/* Write and hand over only once the previous handover has been
+			 * taken at a blank: writing a buffer whose CTRL write is still
+			 * pending tears the frame the unit begins fetching from it.
+			 * This also bounds handovers to one per vertical blank, which
+			 * suits a harness running at about four times the Game Boy's
+			 * rate. The picture settles two frames after the write (entry
+			 * 5), so a handover is not expected to be visible at once. */
+			if (pending == 2 || shown_buf == pending) {
+				const unsigned target = shown_buf ? 0u : 1u;
+				uint16_t *dst = reinterpret_cast<uint16_t *>(
+					TN_VIDEO_FB(target));
+				uint64_t s0 = ticks();
+
+				display_store(frame_ptr, frame_w, frame_h,
+					      frame_pitch, dst,
+					      TN_VIDEO_FB_STRIDE /
+						      TN_VIDEO_PIXEL_BYTES);
 				tn_dcache_wbinval();
 				TN_VIDEO_CTRL = TN_VIDEO_ENABLE |
 						(target ? TN_VIDEO_BUFFER : 0u);
+				pending = target;
 				shown++;
 				show_us += to_us(ticks() - s0);
 			}
-#endif
 		}
+#endif
 #endif
 		if (audio_copy_frames)
 			audio_crc = crc_update(audio_crc, audio_copy,
@@ -742,10 +768,12 @@ int main()
 	printf(" PACE=0");
 #endif
 #if defined(__riscv)
-	printf(" SHOWN=%u SHOW=%u LATE=%u PIXELS=%u BITS=%04x", shown,
-	       shown ? (unsigned)(show_us / shown) : 0u,
-	       (unsigned)TN_VIDEO_LATE, (unsigned)TN_VIDEO_PIXELS,
-	       (unsigned)TN_VIDEO_BITS);
+	printf(" SHOWN=%u SHOW=%u VF=%u LATE=%u PIXELS=%u BITS=%04x PIXELS0=%u",
+	       shown, shown ? (unsigned)(show_us / shown) : 0u,
+	       (unsigned)(TN_VIDEO_FRAMES - video_frames0),
+	       (unsigned)(TN_VIDEO_LATE - video_late0),
+	       (unsigned)TN_VIDEO_PIXELS, (unsigned)TN_VIDEO_BITS,
+	       (unsigned)video_pixels0);
 #endif
 	printf("\n");
 #endif

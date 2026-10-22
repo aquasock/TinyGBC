@@ -282,3 +282,37 @@ Deployment is the open step and waits on the user's permission: `tools/deploy_ti
 - User Test: NOT RUN
 
 ---
+
+## 8 COMMIT Unreleased 2026-10-22T07:08:53-07:00
+
+#### Coming From:
+
+Unreleased f2c8652
+
+#### Purpose:
+
+Deploy the display build entry 7 produced, find out why the picture it drew was stripes rather than the game, and fix the fetch path that caused it.
+
+#### Outcome:
+
+Deploying entry 7's image and running the display build reproduced the player's picture data exactly, `FB=d6e86438` against the PC's, while the video unit reported `PIXELS=288000` and `LATE=52354` and the capture card showed 5-row white bands on black: the unit was drawing `0x7fff` on alternate source lines, not the game. The cause was `fpga/ae350_soc/ahb_sdram.sv`'s video read loop: `step` was seven bits and `S_VREAD` stopped at 127, so a line fetch read 128 of its 160 halfwords and `vdone`, which waits for index 159, never fired. `fd` therefore never followed `fr_req`, the fetch never completed again, and because `fr_req` keeps toggling the late detector fired on every other line, exactly the 72 per frame measured. Entry 4 widened `vindex` and moved the `vdone` comparison to 159 but left the loop at 127, and nothing could catch it: `video_gb_tb.sv` models the vstart/vdata channel rather than instantiating the controller, so no test ever ran `ahb_sdram`. The fix is an eight-bit `step`, a nine-bit column `vcol` that starts at `{op_addr[9:8], 7'd0}` and runs to 159, and the loop ending there; a line starts on a 256-word boundary, so its 160 words never cross the row. `gb_bench` also stopped writing a buffer whose handover was still waiting for its blank, which could tear the frame the unit had begun fetching. The missing test now exists: `fpga/ae350_soc/tb/sdram_video_tb.sv` and `tools/sim_sdram_video.sh` instantiate the controller with a behavioural SDRAM and check 160 halfwords, their indexes, their data, one `vdone` and a CPU read through the line buffer; it passes on the fixed loop and, when the loop is put back to 127, fails with 128 halfwords and no `vdone`, so the check is known to bite. With seed 4 the rebuild places at 82.99 MHz on the bus and 96.65 on the pixel clock, ten video block RAMs each on one clock and the pixel clock through SPINE16 and SPINE25, and packs to a 4,666,860-byte `.bin` with SHA-256 `0fcad2cc881c2f14e31f9142e05a6bb908e9ff68ea3f121110fb95d63c94f4e0` and a `.fs` with `37438e8f7e97fa3d6f1393cb0b892960348a3402eba8c5b857be8c0c8090c879`. After `tangload` reported `ID=0001081b` and `core loaded`, the paced run gave `SHOWN=1663 SHOW=2546 VF=1810 LATE=0 PIXELS=541475 BITS=7fff PIXELS0=0` and the unpaced one `SHOWN=552 VF=551 LATE=0 PIXELS=541400`, both with `FB=d6e86438` and the core's own checksums unchanged at 404.8 and 405 percent. The picture was then read from the capture card rather than judged by eye: frames from the fourth on show the uCity map view, 21,863 lit source pixels against the PC frame 1799's 22,031, matching that frame best among the last twenty with a six-pixel horizontal offset that belongs to the capture path, and a saturated red that stays red at (255,118,0) and a blue that stays blue at (0,0,255), so the red-in-4:0 packing is not swapped and the residual tone difference is the card's conversion. `tools/sim_video_gb.sh` still passes its eleven checks. The core-syntax audit re-read `.ai/core.md` and `.ai/core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `.ai/core.md` was not changed and that entries 1 to 7 were not rewritten, and validated this entry as number 8 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and only eligible paths in Files Modified.
+
+#### Next Steps:
+
+The user should confirm the picture on the monitor, which is the one thing the capture path cannot settle. After that the port's remaining NES-shaped channels are the audio rate, gambatte's 32,768 Hz against the DAC's 48,828.125 Hz, and the Wii pad onto gambatte's input; the capture card's six-pixel offset and the overlay behaviour after a `tangload` are worth a look when the picture is next chased.
+
+#### Files Modified:
+
+- README.md
+- firmware/apps/gb_bench/main.cpp
+- fpga/ae350_soc/ahb_sdram.sv
+- fpga/ae350_soc/tb/sdram_video_tb.sv
+- tools/sim_sdram_video.sh
+
+#### Status:
+
+- Build: PASS
+- Deployment: PASS
+- User Test: NOT RUN
+
+---

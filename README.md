@@ -23,7 +23,7 @@ can be compared:
 TinyGBC GB CORE=gambatte ROM=<bytes> CRC=<crc32> CGB=<0|1> AV=160x144 FPS=... START=<us>
 TinyGBC GB F=<frame> AVG=<us> MAX=<us> VIDEO=<crc> AUDIO=<crc>
 TinyGBC GB FRAMES=<n> AVG=<us> MIN=<us> MAX=<us> OVER=<n> SPEED=<x.y>% SAMPLES=<n> VIDEO=<crc> AUDIO=<crc>
-TinyGBC GB DISPLAY FB=<crc> PACE=<0|1> [SHOWN=<n> SHOW=<us> LATE=<n> PIXELS=<n> BITS=<hex>]
+TinyGBC GB DISPLAY FB=<crc> PACE=<0|1> [SHOWN=<n> SHOW=<us> VF=<n> LATE=<n> PIXELS=<n> BITS=<hex> PIXELS0=<n>]
 ```
 
 The core is built with `VIDEO_RGB565`, its default integer (blipper) audio
@@ -39,8 +39,10 @@ the unit is not showing, which is handed over at a vertical blank. The last
 line then carries `FB`, the checksum of the converted picture, so the PC and
 the AE350 can be compared although only the AE350 has a buffer to write; on
 the AE350 it also carries `SHOWN`, the frames handed over, `SHOW`, the average
-cost of one handover, and what the video unit's `LATE`, `PIXELS` and `BITS`
-registers report. Handover happens at most once per vertical blank, because
+cost of one handover, and what the video unit's registers report across the
+run: `VF` display frames, `LATE` lines re-shown because their fetch was late,
+`PIXELS` lit screen pixels of the last whole frame, `BITS` the pixel bits ever
+seen set, and `PIXELS0` the lit count before the run started. Handover happens at most once per vertical blank, because
 the harness runs at about four times the Game Boy's rate, and the picture
 settles two frames after the write. `PACE=1` adds one emulated frame per Game
 Boy frame (16,742.7 us), which is how the picture is watched.
