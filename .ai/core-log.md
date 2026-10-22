@@ -577,3 +577,42 @@ The window's Input, Video and Saves pages are placeholders because the player ha
 - User Test: PASS
 
 ---
+
+## 17 COMMIT Unreleased 2026-10-22T16:06:20-07:00
+
+#### Coming From:
+
+Unreleased c1fdb5b
+
+#### Purpose:
+
+Let a cartridge arrive as a .zip, the way TinyNES takes one, so the launcher's library can hold archives as well as bare images.
+
+#### Outcome:
+
+gambatte's copy of libretro-common is trimmed to what the core draws on and has no inflate, so the decoder was vendored: `encodings/encoding_deflate.c`, `include/encodings/deflate.h` and `include/retro_endianness.h` from libretro-common (MIT, RetroArch team, headers intact), taken from `libretro/libretro-fceumm` at `ac0d00a7fc01166f84c7bac01d1084ebfd2b865e` -- the same pin TinyNES's `tools/fetch_fceumm.sh` uses for the same job -- under `firmware/third_party/libretro-common/`, whose README records that provenance and why `retro_inline.h` and `retro_common_api.h` are deliberately not duplicated: gambatte's fetched copies are already in the include path and supply the macros these two files need. On top of it, `firmware/common/cart_zip.c` and its header are TinyNES's reader adapted to this cartridge: the central directory is read rather than the local header, one entry ending `.gb` or `.gbc` in any case and any folder, stored or deflated, other entries ignored, two cartridges refused, and the declared size and CRC-32 both checked against what came out. `receive_cart()` now inflates an archive, frees it, and hands gambatte the buffer of its own; `CART_MAX` went from two to four megabytes so the largest Game Boy Color image and the archive holding it each have room, and the CART build's text went from 371,532 to 378,780 bytes, 400,504 of them sent as one segment at `0x40000000`. `tools/test_cart_zip.sh` builds the reader for the PC with `-Werror` and the address and undefined-behaviour sanitizers and runs it over archives it makes itself from `third_party/roms/ucity.gbc`: five accepted (deflated, stored, `.gb`, `.GB`, and a nested entry beside an ignored `.txt`) and four refused (two cartridges, no cartridge, a flipped CRC-32 in the central directory, and an archive cut short), all as expected and with no sanitizer report. The three zips in the user's folder were checked by hand against Python's `zipfile`: all three inflate byte for byte, 1,048,576 bytes each, which is evidence for the cycle rather than a committed fixture. TinyTang's TinyGBC window now lists `.zip` as well (that repository, commit `14f27e9`), and its Library sends the archive untouched. The player was deployed to `/root/ae350/tinygbc-play.elf` (3,214,996 bytes, SHA-256 `520945950f42e8024fd4c70da854d7054f67e9492900af10603b8c1cb081e714`) beside the seed-9 core `fe244818...`, `zelda-ladx.zip` (500,878 bytes) was put in `/root/media/gb`, firmware `6b080b4-dirty.4c13dc7` (648,960 bytes, SHA-256 `ede0f0732eca09a44b6e5d38b127c7cf978b69a2a15a1555b73aa5da501d8a06`) was flashed and the board power-cycled, and the user launched the zip from the window and passed. README's launcher section now covers the archive, its Licensing section names the one vendored decoder, and the placement paragraph was corrected from seed 4 to seed 9, which entry 16 changed without the prose following. The core-syntax audit re-read `core.md` and `core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `core.md` was not changed and entries 1 to 16 were not rewritten, and validated this entry as number 17 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and only eligible paths in Files Modified.
+
+#### Next Steps:
+
+The whole archive is held in RAM while it is unpacked, so a zip larger than four megabytes, or one holding a ROM that large, is refused rather than streamed; that is the limit to raise first if an eight-megabyte cartridge ever appears. The window's Input, Video and Saves pages still wait on a battery save and a savestate on the A25, which would also let `TinyGBC NVRAM WANT` and the settings blob join the four lines the deck answers in both product names. The left stick still moves in the pad trace with no axis mapped or deadzoned.
+
+#### Files Modified:
+
+- README.md
+- firmware/apps/gb_bench/Makefile
+- firmware/apps/gb_bench/main.cpp
+- firmware/common/cart_zip.c
+- firmware/common/cart_zip.h
+- firmware/third_party/libretro-common/README.md
+- firmware/third_party/libretro-common/encodings/encoding_deflate.c
+- firmware/third_party/libretro-common/include/encodings/deflate.h
+- firmware/third_party/libretro-common/include/retro_endianness.h
+- tools/test_cart_zip.sh
+
+#### Status:
+
+- Build: PASS
+- Deployment: PASS
+- User Test: PASS
+
+---

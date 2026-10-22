@@ -130,11 +130,20 @@ and `tools/deploy_tinygbc.sh` puts it on the card at
 from `/root/cores/console138k/tinygbc.bin`.
 
 The window is TinyTang's (`ports/bl616/tinygbc_app.cpp` there), not this
-tree's: the Library page lists the card's `.gbc` and `.gb` files from
+tree's: the Library page lists the card's `.gbc`, `.gb` and `.zip` files from
 `/root/media/gb`, and launching one loads the core, sends the cartridge as the
 file the player asks for, and puts the desktop core back when the game exits.
 Its Input, Video and Saves pages are placeholders until the player has
 something to set.
+
+A `.zip` reaches the player unchanged; the player inflates it itself, reading
+the archive's central directory and checking the stored CRC-32 against what
+came out, into a buffer of its own (`firmware/common/cart_zip.c`). The archive
+may hold one `.gb` or `.gbc` in any case and any folder, and anything else in
+it is ignored. `tools/test_cart_zip.sh` builds the reader for the PC with the
+sanitizers on and runs it over archives it makes itself: stored and deflated,
+both extensions, an ignored extra entry, and the four refusals -- two
+cartridges, no cartridge, a wrong CRC, and an archive cut short.
 
 ## fpga/ae350_soc
 
@@ -155,9 +164,9 @@ tools/deploy_tinygbc.sh         # card /root/cores/console138k/tinygbc.bin, then
 ```
 
 The build needs the open flow: `~/oss-cad-suite`, nextpnr-himbaechel and a
-local Apicula. Placement decides whether the AHB bus reaches 75 MHz; seed 4 is
-the default because it measured 92.26 MHz on the bus and 101.05 on the HDMI
-pixel clock (core-log entry 5), with the pixel clock on SPINE16+SPINE25, the
+local Apicula. Placement decides whether the AHB bus reaches 75 MHz; seed 9 is
+the default because it measured 83.86 MHz on the bus and 98.35 on the HDMI
+pixel clock (core-log entry 15), with the pixel clock on SPINE16+SPINE25, the
 pair this board is known to run.
 
 ## Licensing
@@ -167,3 +176,10 @@ This project's code is MIT. gambatte is GPL-2.0 and is fetched, never vendored:
 only patches to the core would be carried here. Programs built from it,
 including `gb_bench`, are GPL-2.0 and stay in `build/`. The benchmark
 cartridge, uCity, is GPL-3.0 and is fetched the same way.
+
+The one third-party file carried in this tree is libretro-common's raw DEFLATE
+decoder (MIT, RetroArch team): three files under
+`firmware/third_party/libretro-common/` whose own licence headers are intact
+and whose provenance that folder's README gives. It is here because gambatte's
+copy of libretro-common is trimmed to what the core draws on and has no
+inflate, and a cartridge may arrive as a `.zip`.

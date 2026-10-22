@@ -59,7 +59,8 @@
 #include "tinygbc.h"
 #include "uart.h"
 #ifdef GB_CART
-#include "load.h" /* the boot ROM's loader, for the cartridge the launcher sends */
+#include "load.h"    /* the boot ROM's loader, for the cartridge the launcher sends */
+#include "cart_zip.h" /* and the zip reader, for one sent as an archive */
 #endif
 #else
 #include <ctime>
@@ -375,8 +376,11 @@ void audio_resample(const int16_t *data, size_t frames)
 /* The launcher sends the cartridge after this program asks for it: the boot
  * ROM's loader, compiled in here, receives it into the heap as the TNR1 image
  * `ae350run` and tools/load_ae350.py --file send, and the core is given that
- * buffer instead of one built into the program. */
-const size_t CART_MAX = 2u << 20;
+ * buffer instead of one built into the program. A cartridge sent as a .zip is
+ * inflated here, into a buffer of its own, and the archive is freed: four
+ * megabytes covers both the largest Game Boy Color image and the archive that
+ * holds it, and the heap reaches the frame buffers at 0x41fc0000. */
+const size_t CART_MAX = 4u << 20;
 
 const uint8_t *receive_cart(size_t &size)
 {
@@ -400,6 +404,25 @@ const uint8_t *receive_cart(size_t &size)
 	if (got != (uintptr_t)buffer || magic != 0x31524e54u /* "TNR1" */ ||
 	    length == 0 || length > CART_MAX)
 		return nullptr;
+
+	if (cart_is_zip(buffer + 8, length)) {
+		uint8_t *rom = nullptr;
+		size_t rom_size = 0;
+		char name[96];
+		const char *why = cart_unzip(buffer + 8, length, CART_MAX, &rom,
+					     &rom_size, name, sizeof name);
+
+		free(buffer);
+		if (why) {
+			printf("TinyGBC ZIP FAILED %s\n", why);
+			return nullptr;
+		}
+		printf("TinyGBC ZIP %s %u %u\n", name, (unsigned)length,
+		       (unsigned)rom_size);
+		size = rom_size;
+		return rom;
+	}
+
 	size = length;
 	return buffer + 8;
 }

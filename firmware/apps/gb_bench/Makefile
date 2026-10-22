@@ -80,10 +80,15 @@ APP_DEFS += -DGB_AUDIO
 endif
 # CART=1 is the launcher's player: no embedded cartridge, one received over the
 # UART after printing TinyGBC WANT, and link mode announced once the game runs.
+# The zip reader is the player's own; the raw DEFLATE decoder under it is the
+# vendored libretro-common file (firmware/third_party/libretro-common/README.md)
+# and is built with the library flags, so its warnings are not this tree's.
 ifeq ($(CART),1)
-APP_DEFS += -DGB_CART
-SOURCES  += ../../boot/load.c
-CPPFLAGS += -I../../boot
+APP_DEFS     += -DGB_CART
+SOURCES      += ../../boot/load.c ../../common/cart_zip.c
+CPPFLAGS     += -I../../boot -I$(abspath ../../third_party/libretro-common/include)
+LIB_SOURCES  += $(abspath ../../third_party/libretro-common/encodings/encoding_deflate.c)
+LIB_CPPFLAGS += -I$(abspath ../../third_party/libretro-common/include)
 endif
 ifeq ($(PAD),1)
 APP_DEFS += -DGB_PAD
