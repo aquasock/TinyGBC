@@ -133,8 +133,15 @@ The window is TinyTang's (`ports/bl616/tinygbc_app.cpp` there), not this
 tree's: the Library page lists the card's `.gbc`, `.gb` and `.zip` files from
 `/root/media/gb`, and launching one loads the core, sends the cartridge as the
 file the player asks for, and puts the desktop core back when the game exits.
-Its Input, Video and Saves pages are placeholders until the player has
-something to set.
+Its Audio page sets one master volume and a mute for HDMI and the I2S2
+together, kept in TinyTang's `/gbc.ini`: after the cartridge the player prints
+`TinyGBC SETTINGS WANT <address> <bytes>`, takes the volume in percent and the
+mute straight into its `HostSettings`, and scales every resampled pair by
+`tn_volume_gain` (`firmware/include/tinygbc.h`), a gain out of 256 that is the
+square of the percentage's fraction and exactly 256 at 100 percent; a host that
+sends nothing leaves full volume. It prints `TinyGBC GB VOLUME=<percent>`. Its
+Input, Video and Saves pages are placeholders until the player has something
+to set.
 
 A `.zip` reaches the player unchanged; the player inflates it itself, reading
 the archive's central directory and checking the stored CRC-32 against what

@@ -327,6 +327,9 @@ uint64_t audio_us;
 unsigned audio_pairs;
 /* The last pair emitted, for the level top-up below. */
 int16_t audio_last_l, audio_last_r;
+/* The master volume's gain (tn_volume_gain), which every pair is scaled by
+ * before the FIFO; unity until the host says otherwise. */
+uint32_t audio_gain = TN_VOLUME_UNITY;
 unsigned audio_fix;
 /* One emulated frame carries about 818 pairs and the unit drains them over
  * the frame, so the reserve kept in the FIFO has to cover a whole frame plus
@@ -358,8 +361,10 @@ void audio_resample(const int16_t *data, size_t frames)
 		rs_cur_l = l;
 		rs_cur_r = r;
 		while (rs_pos < AUDIO_ONE_Q32) {
-			audio_last_l = audio_lerp(rs_prev_l, rs_cur_l, rs_pos);
-			audio_last_r = audio_lerp(rs_prev_r, rs_cur_r, rs_pos);
+			audio_last_l = (int16_t)tn_volume_apply(
+				audio_lerp(rs_prev_l, rs_cur_l, rs_pos), audio_gain);
+			audio_last_r = (int16_t)tn_volume_apply(
+				audio_lerp(rs_prev_r, rs_cur_r, rs_pos), audio_gain);
 			TN_AUDIO_DATA = ((uint32_t)(uint16_t)audio_last_l << 16) |
 					(uint16_t)audio_last_r;
 			audio_pairs++;
@@ -425,6 +430,33 @@ const uint8_t *receive_cart(size_t &size)
 
 	size = length;
 	return buffer + 8;
+}
+
+/* What the host fills, in one headerless blob: the master volume in percent
+ * and the mute, from /gbc.ini. These bytes are the ABI with the host (TinyTang
+ * ports/bl616/tang_fpga_uart.c), so the two sides change together, and the
+ * program asks for sizeof this. What is here is what it keeps when the host
+ * says nothing or sends fewer bytes: full volume, not muted. */
+struct HostSettings {
+	uint8_t volume;
+	uint8_t mute;
+};
+HostSettings host_settings = { 100, 0 };
+
+/* Ask the host for the settings, as TinyNES's player does: the answer lands
+ * directly in host_settings in the loader's protocol, and nothing arriving
+ * within a second leaves the defaults. */
+void receive_settings()
+{
+	printf("TinyGBC SETTINGS WANT %08lx %08lx\n",
+	       (unsigned long)(uintptr_t)&host_settings,
+	       (unsigned long)sizeof host_settings);
+	fflush(stdout);
+	tn_load_reset();
+	uint32_t got = 0;
+
+	for (int step = 0; step < 10 && !got; step++)
+		got = tn_load_poll(TN_CORE_HZ / 10);
 }
 #endif
 
@@ -892,6 +924,12 @@ int main()
 		printf("TinyGBC GB STATE=%u LOADED\n", (unsigned)state_size);
 
 #ifdef GB_CART
+	receive_settings();
+#ifdef GB_AUDIO_OUT
+	audio_gain = tn_volume_gain(host_settings.volume, host_settings.mute);
+#endif
+	printf("TinyGBC GB VOLUME=%u%s\n", (unsigned)host_settings.volume,
+	       host_settings.mute ? " MUTED" : "");
 	/* Link mode last: from here this program's text goes out as TinyDesk
 	 * frames, the desk layer can sit over the picture, and the launcher that
 	 * started us knows the game is up. */

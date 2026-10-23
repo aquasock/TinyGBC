@@ -676,3 +676,35 @@ None.
 - User Test: PASS
 
 ---
+
+## 20 COMMIT Unreleased 2026-10-22T21:34:13-07:00
+
+#### Coming From:
+
+Unreleased 9a5701f
+
+#### Purpose:
+
+Give TinyGBC one master volume and a mute for HDMI and the I2S2 together, set from a new Audio tab in TinyTang's TinyGBC window and applied by the player, matching what TinyNES gained in the same cycle.
+
+#### Outcome:
+
+HDMI and the I2S2 play the one sample stream (`i2s_out` hands the transmitter the pair it shifts to the DAC, DEV-020), so the volume is a gain in the player and the core, its seed and the deployed image `fe244818...` are unchanged. `firmware/include/tinygbc.h` gained the same `tn_volume_gain` and `tn_volume_apply` as TinyNES's `tinynes.h`: a gain out of 256 that is the square of the percentage's fraction, exactly 256 at 100 percent and 0 when muted, checked on the PC by TinyNES's `tests/test_volume.sh` against the identical functions. The player had no settings channel, so `firmware/apps/gb_bench/main.cpp`'s CART build now prints `TinyGBC SETTINGS WANT <address> <bytes>` after the game loads and before link mode, takes a two-byte `HostSettings`, the volume in percent and the mute, straight into memory in the loader's protocol, waiting about a second and keeping 100 and 0 when nothing comes, then prints `TinyGBC GB VOLUME=<percent>`. In the AUDIO build `audio_resample` scales each interpolated pair by `audio_gain` before the FIFO and keeps the scaled pair for the level top-up. TinyTang's half is its entry 20: a new `/gbc.ini` with an `[audio]` section, `tang_ae350_run` answering `TinyGBC SETTINGS WANT` from it, and the window's Audio tab with a slider in 5 percent steps, a percentage, a mute and Save, which creates the file on a card that has none. `make CARD=1` built `tinygbc-play.elf`, 3,216,816 bytes, SHA-256 `62f75aa9c41f5019ba7c9996df115077dff27dec3f06dd9bba4bcf3a23f7448b`, put at `/root/ae350/tinygbc-play.elf` with TinyTang's `tinytang_put.py`; the core was not redeployed. The user tested the tab, the volume and the mute on HDMI and the Line Out and reported PASS. The board was off USB when this entry was written, so `/gbc.ini` and the player's `VOLUME` line were not read back. README's launcher section describes the request and the gain. The core-syntax audit re-read `core.md` and `core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `core.md` was not changed and entries 1 to 19 were not rewritten, and validated this entry as number 20 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and only eligible paths in Files Modified.
+
+#### Next Steps:
+
+The volume is taken when a game starts, so a change made over a running game waits for the next one; applying it at once would need a fabric path from the BL616 to the player during play. The settings channel now exists, so Input and Video can join the blob when the player has something to set, and the standing work is unchanged: a battery save and a savestate on the A25 for the Saves page, and the left stick, which still has no axis mapped or deadzoned.
+
+#### Files Modified:
+
+- README.md
+- firmware/apps/gb_bench/main.cpp
+- firmware/include/tinygbc.h
+
+#### Status:
+
+- Build: PASS
+- Deployment: PASS
+- User Test: PASS
+
+---
