@@ -187,11 +187,12 @@ tools/deploy_tinygbc.sh         # card /root/cores/console138k/tinygbc.bin, then
 ```
 
 The build needs the open flow: `~/oss-cad-suite`, nextpnr-himbaechel and a
-local Apicula. Placement decides whether the AHB bus reaches 75 MHz; seed 4 is
-the default because, with the video unit's four-pixel look-ahead, it measured
-78.98 MHz on the bus and 92.00 on the HDMI pixel clock, the best bus margin of
-the four clean seeds of 1 to 8 (core-log entry 21), with the pixel clock on
-SPINE16+SPINE25, the pair this board is known to run.
+local Apicula. Placement decides whether the AHB bus reaches 75 MHz; seed 6 is
+the default because, with the Wii pad unit reading data format 3, it measured
+84.38 MHz on the bus and 89.17 on the HDMI pixel clock, the best bus margin of
+the seven clean seeds of 1 to 8 (core-log entry 22), with the pixel clock on
+SPINE16+SPINE25, the pair this board is known to run. That image is deployed
+and the user passed it with both controller paths (entry 23).
 
 ## Licensing
 

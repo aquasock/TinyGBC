@@ -773,3 +773,34 @@ Check the seed-6 build's log for its gates (the AE350 hop, the video block RAMs,
 - User Test: NOT RUN
 
 ---
+
+## 23 COMMIT Unreleased 2026-10-23T15:26:52-07:00
+
+#### Coming From:
+
+Unreleased 9954633
+
+#### Purpose:
+
+Finish the handoff entry 22 left, by proving the seed-6 build through its gates, deploying it with the player and cartridge, and passing the board test the user then ran.
+
+#### Outcome:
+
+The seed-6 build that entry 22 left running finished after that entry was written, and its gates were checked against the artifacts rather than assumed: `build/ae350_soc/ae350_soc.fs` is byte-identical to `build/e22_fmt3/normal/seed6/design.fs` (SHA-256 `1f1b64e583b5970e4b696fba0897b382ccf4105d9e3fde8c4ad7cac611170707`), the AE350 dedicated PLL clock hop is present in `core_clk`, the AHB bus reached 84.38 MHz and the HDMI pixel clock 89.17 MHz against 74.25, nextpnr logged `routing 'pix_clk' first`, the ten video block RAMs are each on one clock and in 9-bit mode, and the pixel clock takes SPINE16 and SPINE25, the pair this board is known to run. `ae350_soc.bin` repacks from that `.fs` at SHA-256 `78d01d47f026decbabc203805ea5fdfbf845db370dedc2d0518b765a7035ca61`, 4,666,860 bytes. `tools/deploy_tinygbc.sh` put it at `/root/cores/console138k/tinygbc.bin` and the player, SHA-256 `62f75aa9c41f5019ba7c9996df115077dff27dec3f06dd9bba4bcf3a23f7448b` at 3,216,816 bytes, at `/root/ae350/tinygbc-play.elf`, and `tangload` reported `core loaded`; the cartridge was put at `/root/media/gb`, whose folder was created, and the desktop core was loaded again afterwards so `/tang.ini`'s `i2s2_oled` declared `0xc0 = 0x0010`. The board reported `tinytang 966da0d-dirty.1704dab`, entry 25 of TinyTang's log. The first window listed no games: the cartridge's 61-character name is at or over `LIB_NAME_BYTES` (56) in TinyTang's `ports/bl616/tinygbc_app.cpp`, and `lib_listable()` drops such an entry, leaving only `0 shown, more not listed`; a 29-byte name, `Zelda - Oracle of Seasons.gbc`, was put on the card and the long one removed, and the game then listed. That limit and its near-silent handling are TinyTang's, not this repository's, and were reported to the user. The user reported PASS for the cycle, naming both the Classic Controller in Adafruit's adapter and a Wii Remote through 8BitDo's Retro Receiver as working, so entry 21's deferred board checks were accepted in the same pass. Seed 6 is the default in `tools/build_ae350_soc.sh` with its reason, the README's seed paragraph follows it, and `.ai/core-reference.md` gained WII-004 for data format 3 and the receiver, carried from TinyNES's WII-004 and confirmed here by `tests/wii_pads_tb.sv` and the user's play. The core-syntax audit re-read `.ai/core.md` and `.ai/core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `.ai/core.md` was not changed and entries 1 to 22 were not rewritten, checked that the reference's six YAML blocks parse with the index and records naming the same 182 ids in the same order, which needed DEV-020's record moved inside the block after DEV-019, since it had been left outside the fence and the index and the block disagreed already at the previous commit, and validated this entry as number 23 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and only eligible paths in Files Modified.
+
+#### Next Steps:
+
+The standing work is unchanged: a battery save and a savestate on the A25 so the Saves page has something to show, the left stick, and the Input and Video pages, which stay placeholders until the player serves them. In TinyTang, the TinyGBC window hides a cartridge whose name reaches 56 bytes with only a `more not listed` hint; naming that limit in the status line is a one-string change, while raising the cap would cost about 40 bytes per entry across 256 entries, which that board's free heap does not have. No board work remains for this cycle.
+
+#### Files Modified:
+
+- README.md
+- tools/build_ae350_soc.sh
+
+#### Status:
+
+- Build: PASS
+- Deployment: PASS
+- User Test: PASS
+
+---

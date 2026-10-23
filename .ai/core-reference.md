@@ -308,6 +308,7 @@ Topic IDs are the `record_id` prefix. An entry reserves a name; it does not clai
 | How is FCEUmm played with Wii Classic Controllers, and how fast does it run under play? | EMU | EMU-005 |
 | How is a Wii Classic Controller initialized and read over I2C? | WII | WII-001 |
 | Can Adafruit's Wii breakout adapter sit between a controller and a PMOD socket, and what about the CYBERDECK HAT? | WII | WII-002 |
+| Why is data format 3 read, and what does 8BitDo's Retro Receiver send? | WII | WII-004, WII-001 |
 | Which PMOD0 pins are used for four Wii extension buses? | PMOD | PMOD-007 |
 | Which PMOD1 pins carry the Pmod I2S2's DAC? | PMOD | PMOD-008 |
 | Which clocks and sample rates does the I2S2's CS4344 accept, and how does TinyNES clock it? | AUD | AUD-001 |
@@ -509,6 +510,7 @@ EMU-008: "Zelda II's title screen polls $2002 about 1,900 times a frame and FCEU
 WII-001: "Wii extensions use I2C address 0x52; write F0=55 then FB=00 to disable encryption, read six identity bytes at FA and six format-1 data bytes after setting pointer 00; NintendoExtensionCtrl waits 10 ms, 20 ms and 175 us at those steps and accepts Classic IDs 00/01 00 A4 20 00..03 01; buttons in bytes 4-5 are active low"
 WII-002: "Adafruit's Wii Nunchuck Breakout Adapter (4836) takes VIN as the logic reference and level-shifts SCL/SDA for 3-5 V with a 10K pull-up on each, address fixed at 0x52, and works on a PMOD0 I2C pair at 3.3 V; Adafruit's CYBERDECK HAT is a Raspberry Pi HAT and must not be mated to this board's 2x20 SDRAM headers"
 WII-003: "This Classic Controller: byte 4 bit 1 R, 2 Plus, 3 Home, 4 Minus, 5 L, 6 Down, 7 Right; byte 5 bit 0 Up, 1 Left, 2 ZR, 3 X, 4 A, 5 Y, 6 B, 7 ZL, all active low - WiiBrew's table does not match it"
+WII-004: "Data format 3 (FE=03) is LX RX LY RY LT RT a byte each, then the two button bytes in format 1's bit layout; 8BitDo's Retro Receiver for the NES/SNES Classic identifies as 00 00 A4 20 01 01 and sends format 3 whatever FE says, so wii_pads.sv selects format 3 and reads eight bytes, packing them into the six-byte format-1 layout"
 AUD-001: "The CS4344 takes a 256x MCLK at 2 to 50 kHz (MCLK 0.512 to 50 MHz, 45 to 55 percent duty) in I2S, with MCLK, SCLK and LRCK synchronous but no phase set; TinyNES counts all three from the 75 MHz bus clock, MCLK 12.5 MHz, Fs 48,828.125 Hz, measured 48,827.968 Hz on the board"
 LORA-001: "The REYAX RYLR998 (UPC 612789267033) is a five-pin 3.3 V UART LoRa module, AT-command controlled, 820 to 960 MHz, -20 to +22 dBm out, -129 dBm sensitivity, 140 mA transmitting at +22 dBm; RYLR998_M4 has an I-PEX MHF4 connector instead of the built-in antenna; not fitted or tested here"
 ```
@@ -764,6 +766,19 @@ Records are grouped in the order of the topic catalog, and numbered within each 
     - "oss-cad-suite share/yosys/gowin/cells_xtra_gw5a.v: modules ADCLRC, ADCULC and ADC"
     - "aquasock/apicula epic/gw5ast138c cd3893f, apycula/chipdb.py: the comment above _adc_bel_sites, _adc_description_present"
   verification: "Read from the sources on 2026-10-13 (core-log entry 22) after this file and an online search found no board sensor; not exercised on hardware."
+
+- record_id: DEV-020
+  kind: DEVICE
+  topic_id: DEV
+  title: "HDMI audio: the sample handoff into the pixel domain and the rate the sink is told"
+  status: VERIFIED
+  verified_date: 2026-10-21
+  statement: "hdl-util's HDMI transmitter takes one audio word per clk_audio cycle and its audio logic is clocked by clk_audio: packet_picker samples that clock in the pixel domain and detects its rising edge, and audio_clock_regeneration_packet counts those edges over N/128 samples to measure CTS against the pixel clock, so any real sample rate is declared correctly without a table of its own (N is the 48 kHz value, which only sizes the measurement window). On this board the I2S unit's frame rate is 75 MHz / 1536 = 48,828.125 Hz, so a design that feeds the transmitter that stream must put clk_audio and the words in the pixel domain: the I2S side flips a toggle once per frame and mirrors the shifter's own frame register, and the pixel side latches the pair when the two-stage synchronised toggle changes and raises clk_audio for exactly one pixel clock. Two other shapes were built and carried no audio: a free-running 48,828.125 Hz clock made by dividing bus_clk, and the same handshake with the FIFO's pop-cycle value sampled at the frame boundary, which is zero outside the cycle it is popped."
+  consequence: "Treat the transmitter's audio inputs as pixel-domain signals. Gating the pixel clock for one cycle per sample is deliberate and is what the working image does; do not hand the module a clock from another domain and expect its audio logic to run. The sink accepts a non-nominal declared rate: 48,828.125 Hz played on the television this board drives, so the exact-48 kHz option (a 12.288 MHz master clock and another PLL) is not needed for correct pitch. A test tone generated in the pixel domain and fed through the same path is the fastest way to separate a broken packet path from a silent sample source, and it was what located this fault."
+  sources:
+    - "fpga/hdmi/packet_picker.sv audio_sample_word_transfer and clk_audio_old; fpga/hdmi/audio_clock_regeneration_packet.sv N_48K and the CTS counter; fpga/hdmi/hdmi.sv audio input wiring"
+    - "fpga/ae350_soc/i2s_out.sv (MCLK_DIV 6, frame at tick 255, audio_toggle and the mirrored frame pair); fpga/ae350_soc/ae350_soc.sv (pixel-side toggle synchroniser and the one-cycle clk_audio)"
+  verification: "On 2026-10-21, seed 8 of an eight-seed sweep of the audio-wired design (design.bin SHA-256 188d6a961d75e47ccf537b731746d669c5a96e80f7d3857efd53bb7843475723, bus_clk 79.38 MHz, pix_clk 92.15 MHz, no hold violations, pixel clock on SPINE16+SPINE25, AE350 dedicated hop present) was installed as /root/cores/console138k/tinynes.bin and the user launched Castlevania from the desktop launcher and reported perfect audio on the Pmod I2S2 and on HDMI together. Before the wiring, a 1.1 kHz tone generated from the pixel counter and sent through the same packets was audible on HDMI, which proved the data islands, the ACR packets and the synchronisers; with the tone gated on the I2S pair being non-zero it fell silent, which located the fault in the sample handoff rather than the packet path."
 
 - record_id: BRD-001
   kind: BOARD
@@ -2922,6 +2937,19 @@ Records are grouped in the order of the topic catalog, and numbered within each 
     - "WiiBrew Wiimote/Extension Controllers/Classic Controller data format 0x01, which this controller does not follow"
   verification: "Measured on this board on 2026-10-22 (core-log entry 13): the user pressed A, B, X, Y, L, R, ZL, ZR, Plus, Minus, Home, the d-pad and the left stick in order while the harness printed every change of DATA and DATA2; each press set exactly one bit, and the mapping built from them was then played and passed."
 
+- record_id: WII-004
+  kind: EXTERNAL
+  topic_id: WII
+  title: "Data format 3, and 8BitDo's Retro Receiver for the NES/SNES Classic"
+  status: VERIFIED
+  verified_date: 2026-10-23
+  statement: "A Classic Controller's data format is selected by writing register 0xFE: the register reads 0x01 by default and the controller switches when 0x03 is written, reporting the selection in identity byte 4. Format 3 is eight data bytes: LX, RX, LY, RY, LT and RT one byte each, then the two button bytes in format 1's active-low bit layout. 8BitDo's Retro Receiver for the NES/SNES Classic identifies as 00 00 A4 20 01 01 and sends format 3 whatever 0xFE says, picking up a Wii Remote's Classic Controller behind it."
+  consequence: "fpga/ae350_soc/wii_pads.sv writes 0xfe = 0x03 after the unencrypted wake-up and waits 20 ms, then reads eight data bytes and packs them into the six-byte format-1 layout its DATA, DATA2 and pad registers keep, so nothing downstream of the registers changed and WII-003 still gives the button bits. A six-byte read would take the receiver's trigger bytes for buttons and report every one of them held. A clock-divider restart now lets a transfer in flight finish rather than cut it mid-byte. The receiver is one more device on the bus this unit polls; it adds no protocol of its own."
+  sources:
+    - "TinyNES's .ai/core-reference.md WII-004, which measured the receiver on this board: identity 00 00 A4 20 01 01, 0xFE read as 01, and format-3 reports, TinyNES core-log entry 52"
+    - "This project's fpga/ae350_soc/wii_pads.sv and tests/wii_pads_tb.sv, the bench modelling a Classic Controller that sends format 1 until told format 3 and then the receiver"
+  verification: "Carried from TinyNES's WII-004, measured there on 2026-10-23. Applied here on 2026-10-23 (core-log entry 22): tests/wii_pads_tb.sv passed and failed on each of four planted faults, no 0xfe write, a six-byte read, buttons taken from the trigger bytes and a restart that cuts a transfer short. Revised 2026-10-23 (core-log entry 23): the user played a cartridge with a Wii Remote and Classic Controller through the receiver on this core and reported it working, so the path is confirmed on this board."
+
 - record_id: AUD-001
   kind: EXTERNAL
   topic_id: AUD
@@ -2950,20 +2978,6 @@ Records are grouped in the order of the topic catalog, and numbered within each 
   verification: "Looked up online on 2026-10-14 (core-log entry 35) because this file had no answer; the datasheet text was extracted with pdftotext. No module has been fitted or tested on this board, so the status is SOURCED. The datasheet is a 2021 copy from a third-party host rather than REYAX's own site, and a newer revision may exist."
 ```
 
----
-
-- record_id: DEV-020
-  kind: DEVICE
-  topic_id: DEV
-  title: "HDMI audio: the sample handoff into the pixel domain and the rate the sink is told"
-  status: VERIFIED
-  verified_date: 2026-10-21
-  statement: "hdl-util's HDMI transmitter takes one audio word per clk_audio cycle and its audio logic is clocked by clk_audio: packet_picker samples that clock in the pixel domain and detects its rising edge, and audio_clock_regeneration_packet counts those edges over N/128 samples to measure CTS against the pixel clock, so any real sample rate is declared correctly without a table of its own (N is the 48 kHz value, which only sizes the measurement window). On this board the I2S unit's frame rate is 75 MHz / 1536 = 48,828.125 Hz, so a design that feeds the transmitter that stream must put clk_audio and the words in the pixel domain: the I2S side flips a toggle once per frame and mirrors the shifter's own frame register, and the pixel side latches the pair when the two-stage synchronised toggle changes and raises clk_audio for exactly one pixel clock. Two other shapes were built and carried no audio: a free-running 48,828.125 Hz clock made by dividing bus_clk, and the same handshake with the FIFO's pop-cycle value sampled at the frame boundary, which is zero outside the cycle it is popped."
-  consequence: "Treat the transmitter's audio inputs as pixel-domain signals. Gating the pixel clock for one cycle per sample is deliberate and is what the working image does; do not hand the module a clock from another domain and expect its audio logic to run. The sink accepts a non-nominal declared rate: 48,828.125 Hz played on the television this board drives, so the exact-48 kHz option (a 12.288 MHz master clock and another PLL) is not needed for correct pitch. A test tone generated in the pixel domain and fed through the same path is the fastest way to separate a broken packet path from a silent sample source, and it was what located this fault."
-  sources:
-    - "fpga/hdmi/packet_picker.sv audio_sample_word_transfer and clk_audio_old; fpga/hdmi/audio_clock_regeneration_packet.sv N_48K and the CTS counter; fpga/hdmi/hdmi.sv audio input wiring"
-    - "fpga/ae350_soc/i2s_out.sv (MCLK_DIV 6, frame at tick 255, audio_toggle and the mirrored frame pair); fpga/ae350_soc/ae350_soc.sv (pixel-side toggle synchroniser and the one-cycle clk_audio)"
-  verification: "On 2026-10-21, seed 8 of an eight-seed sweep of the audio-wired design (design.bin SHA-256 188d6a961d75e47ccf537b731746d669c5a96e80f7d3857efd53bb7843475723, bus_clk 79.38 MHz, pix_clk 92.15 MHz, no hold violations, pixel clock on SPINE16+SPINE25, AE350 dedicated hop present) was installed as /root/cores/console138k/tinynes.bin and the user launched Castlevania from the desktop launcher and reported perfect audio on the Pmod I2S2 and on HDMI together. Before the wiring, a 1.1 kHz tone generated from the pixel counter and sent through the same packets was audible on HDMI, which proved the data islands, the ACR packets and the synchronisers; with the tone gated on the I2S pair being non-zero it fell silent, which located the fault in the sample handoff rather than the packet path."
 
 ## 6. Record template
 
@@ -2994,7 +3008,7 @@ Records are grouped in the order of the topic catalog, and numbered within each 
 - A `core-syntax.md` audit is required whenever this file changes, per `.ai/core.md`.
 
 ```yaml
-last_reviewed: 2026-10-22
+last_reviewed: 2026-10-23
 ```
 
 ---

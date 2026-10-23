@@ -35,9 +35,12 @@ family=GW5AST-138C
 # best at 83.86 MHz bus and 98.35 pixel (entry 15). The video unit's
 # four-pixel look-ahead moved it again: four of seeds 1 to 8 cleared the bus
 # with the pixel clock routed first, and seed 4 was best at 78.98 MHz bus and
-# 92.00 pixel, the pixel clock on SPINE16+SPINE25 (entry 21), which is the
-# image this tree deploys.
-seed="${TINYGBC_SEED:-4}"
+# 92.00 pixel, the pixel clock on SPINE16+SPINE25 (entry 21). The format-3
+# change moved it again: seven of seeds 1 to 8 cleared the bus and seed 6 had
+# the most margin, 84.38 MHz bus and 89.17 pixel, the pixel clock still on
+# SPINE16+SPINE25, and the user passed that image on the board, so seed 6 is
+# what this tree deploys (entries 22 and 23).
+seed="${TINYGBC_SEED:-6}"
 
 [[ -f "$suite/environment" ]] || { echo "missing open toolchain: $suite" >&2; exit 2; }
 # shellcheck disable=SC1090
