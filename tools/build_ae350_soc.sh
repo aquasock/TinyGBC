@@ -32,9 +32,12 @@ family=GW5AST-138C
 # (core-log entry 4) and 92.26 and 101.05 once its fetch port was widened
 # (entry 5). The second sweep, after the fetch index grew to eight bits, is
 # what decides it now: seven of seeds 9 to 16 cleared the bus and seed 9 was
-# best at 83.86 MHz bus and 98.35 pixel (entry 15), which is the image this
-# tree deploys.
-seed="${TINYGBC_SEED:-9}"
+# best at 83.86 MHz bus and 98.35 pixel (entry 15). The video unit's
+# four-pixel look-ahead moved it again: four of seeds 1 to 8 cleared the bus
+# with the pixel clock routed first, and seed 4 was best at 78.98 MHz bus and
+# 92.00 pixel, the pixel clock on SPINE16+SPINE25 (entry 21), which is the
+# image this tree deploys.
+seed="${TINYGBC_SEED:-4}"
 
 [[ -f "$suite/environment" ]] || { echo "missing open toolchain: $suite" >&2; exit 2; }
 # shellcheck disable=SC1090

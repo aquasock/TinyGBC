@@ -10,9 +10,11 @@
 // source pixel is individually identifiable.
 //
 // The raster is driven the way the HDMI transmitter drives it: cx 0..1649 and
-// cy 0..749 at 74.25 MHz. The unit samples the raster four clocks behind the
-// transmitter, so the RGB it outputs at a clock belongs to the pixel seen four
-// clocks earlier; the testbench delays cx and cy by four to know which.
+// cy 0..749 at 74.25 MHz. The transmitter (hdl-util's hdmi.sv) takes the
+// colour for cx one clock after it presents cx, so the RGB at a clock must be
+// the pixel cx named one clock earlier; the testbench files each RGB under
+// that pixel, and a unit whose pipeline is not matched by its look-ahead
+// lands every pixel in the wrong column (PROT-009).
 //
 // It checks, in the second frame shown:
 //   - one picture line is fetched while the line before is on screen, 143
@@ -140,17 +142,13 @@ module video_gb_tb;
 		end
 	end
 
-	// The four-clock delay between the raster the unit samples and the pixel
-	// it is emitting now.
-	reg [10:0] dx1 = 11'd0, dx2 = 11'd0, dx3 = 11'd0, dx4 = 11'd0;
-	reg [9:0]  dy1 = 10'd0, dy2 = 10'd0, dy3 = 10'd0, dy4 = 10'd0;
-	reg [10:0] dx5 = 11'd0, dx6 = 11'd0, dx7 = 11'd0, dx8 = 11'd0;
-	reg [9:0]  dy5 = 10'd0, dy6 = 10'd0, dy7 = 10'd0, dy8 = 10'd0;
+	// The pixel the transmitter takes the current RGB for: cx and cy one clock
+	// ago.
+	reg [10:0] dx1 = 11'd0;
+	reg [9:0]  dy1 = 10'd0;
 	always @(posedge pix_clk) begin
-		dx1 <= cx; dx2 <= dx1; dx3 <= dx2; dx4 <= dx3;
-		dy1 <= cy; dy2 <= dy1; dy3 <= dy2; dy4 <= dy3;
-		dx5 <= dx4; dx6 <= dx5; dx7 <= dx6; dx8 <= dx7;
-		dy5 <= dy4; dy6 <= dy5; dy7 <= dy6; dy8 <= dy7;
+		dx1 <= cx;
+		dy1 <= cy;
 	end
 
 	// The picture as it comes out, by frame number.
@@ -158,8 +156,8 @@ module video_gb_tb;
 	integer frame = 0;
 
 	always @(posedge pix_clk) begin
-		if (dx8 < H_ACTIVE && dy8 < V_ACTIVE)
-			img[frame % 4][dy8][dx8] <= rgb;
+		if (dx1 < H_ACTIVE && dy1 < V_ACTIVE)
+			img[frame % 4][dy1][dx1] <= rgb;
 	end
 
 	// At each vertical blank, look at the frame that has just been drawn.

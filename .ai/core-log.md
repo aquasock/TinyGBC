@@ -708,3 +708,36 @@ The volume is taken when a game starts, so a change made over a running game wai
 - User Test: PASS
 
 ---
+
+## 21 COMMIT Unreleased 2026-10-22T22:39:29-07:00
+
+#### Coming From:
+
+Unreleased 745f1ad
+
+#### Purpose:
+
+Fix the wrap the user found at the left edge of the picture once a game core is loaded, about seven pixels of the line's far end shown at its start, which TinyGBC shares with TinyNES.
+
+#### Outcome:
+
+`fpga/ae350_soc/video.sv`, imported from TinyNES, delayed the transmitter's `cx`/`cy` by four clocks before its four-stage colour pipeline, while hdl-util's `hdmi.sv` takes the colour for `cx` one clock after it presents `cx` (PROT-009), so every pixel reached the transmitter seven clocks late and the line's last seven pixels, colour bars and desk layer alike, showed at its left edge; TinyNES's entry 51 traces it from the user's screenshots and confirms TinyTang's `desktop.bin` already leads by four and is unaffected. This is a different fault from entry 15's seven-bit index. The unit now registers (`cx`, `cy`) advanced by four, wrapping into the next line and frame, which also centres the Game Boy picture that sat seven pixels right. `fpga/ae350_soc/tb/video_gb_tb.sv` had modelled the same eight-clock delay and so passed the fault; it now files each RGB under the pixel `cx` named one clock earlier, and `tools/sim_video_gb.sh` passes 15 checks with the fix while the old unit fails 12 of them, and a look-ahead of three or of five fails two, so the testbench pins the value. An eight-seed sweep with the pixel clock routed first (`build/e21_lead`) left four seeds clean, all without a hold violation, and four short of 75 MHz on `bus_clk` at 66.31 to 73.60; seed 4, the best bus margin at 78.98 MHz with `pix_clk` 92.00, is the new default in `tools/build_ae350_soc.sh`, and `TINYGBC_SEED=4` rebuilt it through every gate (the AE350 hop present, 10 video block RAMs each on one clock, the pixel clock on SPINE16+SPINE25) to `ae350_soc.fs` `6b4fba0f70394628c9a4dc56a82d28d56931660ce17d7bbe683d32720bb9cd71`, the sweep's seed-4 image byte for byte, and `ae350_soc.bin` `b17ed09a5900f7d0c36aadf9bce33ca320fcd84b0dd657a6a3b801f65554397d`. `tools/deploy_tinygbc.sh` put it at `/root/cores/console138k/tinygbc.bin` with the unchanged player and loaded it, and the desktop core was loaded again afterwards. The user deferred the test to a later session, so this entry is a handoff with the board test not run. README's seed paragraph and PROT-009's verification were revised. The core-syntax audit re-read `core.md` and `core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `core.md` was not changed and entries 1 to 20 were not rewritten, and validated this entry as number 21 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and only eligible paths in Files Modified.
+
+#### Next Steps:
+
+The user test is outstanding: a game started from the TinyGBC window with the colour bars beginning at column 0, the desktop over the game with a clean left edge, the picture centred, and sound and the Audio tab's volume as before. If it passes, seed 4 stands as the tested default; if not, seeds 3, 7 and 8 were also clean in `build/e21_lead`. The standing work is unchanged: a battery save and a savestate on the A25 for the Saves page, and the left stick.
+
+#### Files Modified:
+
+- README.md
+- fpga/ae350_soc/tb/video_gb_tb.sv
+- fpga/ae350_soc/video.sv
+- tools/build_ae350_soc.sh
+
+#### Status:
+
+- Build: PASS
+- Deployment: PASS
+- User Test: NOT RUN
+
+---

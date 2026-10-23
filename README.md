@@ -171,10 +171,11 @@ tools/deploy_tinygbc.sh         # card /root/cores/console138k/tinygbc.bin, then
 ```
 
 The build needs the open flow: `~/oss-cad-suite`, nextpnr-himbaechel and a
-local Apicula. Placement decides whether the AHB bus reaches 75 MHz; seed 9 is
-the default because it measured 83.86 MHz on the bus and 98.35 on the HDMI
-pixel clock (core-log entry 15), with the pixel clock on SPINE16+SPINE25, the
-pair this board is known to run.
+local Apicula. Placement decides whether the AHB bus reaches 75 MHz; seed 4 is
+the default because, with the video unit's four-pixel look-ahead, it measured
+78.98 MHz on the bus and 92.00 on the HDMI pixel clock, the best bus margin of
+the four clean seeds of 1 to 8 (core-log entry 21), with the pixel clock on
+SPINE16+SPINE25, the pair this board is known to run.
 
 ## Licensing
 
