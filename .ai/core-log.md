@@ -741,3 +741,35 @@ The user test is outstanding: a game started from the TinyGBC window with the co
 - User Test: NOT RUN
 
 ---
+
+## 22 COMMIT Unreleased 2026-10-23T14:46:34-07:00
+
+#### Coming From:
+
+Unreleased 77e58b1
+
+#### Purpose:
+
+Carry TinyNES's data-format-3 change into TinyGBC's Wii pad unit so 8BitDo's Retro Receiver for the NES/SNES Classic works as controller 1, as the user asked, handed off before deployment because the user's session was ending.
+
+#### Outcome:
+
+TinyNES's entry 52 found that the receiver, plugged into Adafruit's adapter on USB-A, identifies as a Classic Controller (`00 00 a4 20 01 01`) but sends only data format 3, eight bytes with the buttons in bytes 6 and 7, so a six-byte read takes its triggers as every button held, and that a Classic Controller switches to format 3 when `0x03` is written to `0xfe` (TinyNES record WII-004). TinyGBC's `fpga/ae350_soc/wii_pads.sv` differed from TinyNES's only in two comment lines, so TinyNES's change was applied as a patch: the wake-up writes `0xfe = 0x03` and waits 20 ms, the identity is read as before, eight data bytes are read and packed into format 1's six so DATA, DATA2, `pad0_held` and the player keep their layout, and a clock-divider restart now lets a transfer in flight finish rather than leave a controller mid-byte. TinyGBC had no bench for the unit; TinyNES's `tests/wii_pads_tb.sv`, which models a Classic Controller that sends format 1 until told format 3 and the receiver, was added unchanged and passed (`WII PADS PASS polls=5,53 wakes=3,2`), and it failed on each of four planted faults: no `0xfe` write, a six-byte read, buttons taken from the trigger bytes and a restart that cuts a transfer short. The README describes the read and the bench. An eight-seed sweep (`build/e22_fmt3`) was clean on seven: seed 2 failed `bus_clk` at 74.23 MHz against 75; seeds 1, 3, 4, 5, 6, 7 and 8 passed with no hold violation, `bus_clk` 75.47 to 84.38 MHz and `pix_clk` 89.17 to 95.73 MHz, the default seed 4 at 80.44 and 92.28. The user asked for the best seed; seed 6, 84.38 and 89.17 MHz, has the most `bus_clk` margin, and `TINYGBC_SEED=6 tools/build_ae350_soc.sh` was started and left running when the session ended, so its gates and image are not recorded here. Nothing was deployed: the card rebuilt in TinyTang's entry 21 holds no TinyGBC core, player or cartridge. The core-syntax audit re-read `.ai/core.md` and `.ai/core-syntax.md`, inspected the complete `.ai/` diff, confirmed `.ai/core.md` was not changed and no settled entry was rewritten, and validated this entry as number 22 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and only eligible paths in Files Modified.
+
+#### Next Steps:
+
+Check the seed-6 build's log for its gates (the AE350 hop, the video block RAMs, the pixel clock bridges) and that `build/ae350_soc/ae350_soc.fs` matches `build/e22_fmt3/normal/seed6/design.fs`; if it fails, seed 8 (83.34 and 95.49 MHz) is the next best. Then deploy at a TinyTang shell prompt with TinyTang's tools: the image as `/root/cores/console138k/tinygbc.bin`, `build/firmware/apps/gb_card/tinygbc-play.elf` as `/root/ae350/tinygbc-play.elf`, and the cartridge `/home/vash/Desktop/Legend of Zelda, The - Oracle of Seasons (USA, Australia).gbc` under `/root/media/gb/` (create the folders first). The user tests from the TinyGBC window with the Classic Controller in the adapter and with a Wii Remote and Classic Controller through the receiver; entry 21's open checks (colour bars at column 0, the desktop's left edge, the centred picture, sound and volume) can run in the same session. If it passes, make seed 6 the default in `tools/build_ae350_soc.sh` with its reason, and add a WII record for format 3 and the receiver, citing TinyNES's WII-004. TinyGBC's `.ai/core.md` Purpose names the project TinyNES; it is restricted, so only the user can have it corrected. The standing work remains a battery save and a savestate on the A25 for the Saves page, and the left stick.
+
+#### Files Modified:
+
+- README.md
+- fpga/ae350_soc/wii_pads.sv
+- tests/wii_pads_tb.sv
+
+#### Status:
+
+- Build: NOT RUN
+- Deployment: NOT RUN
+- User Test: NOT RUN
+
+---

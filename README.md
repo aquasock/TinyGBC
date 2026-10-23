@@ -73,6 +73,22 @@ to 7, byte 5 carries Up, Left, ZR, X, A, Y, B and ZL in bits 0 to 7, all active
 low. A is the Game Boy's A, B its B, Plus Start, Minus Select, and the d-pad the
 d-pad.
 
+Each bus selects data format 3 (`0x03` to `0xfe`) after waking a controller,
+reads eight bytes and packs them into format 1's six, so the registers and the
+byte numbers above keep format 1's layout. That is what makes 8BitDo's Retro
+Receiver for the NES/SNES Classic work as well as a Classic Controller in the
+adapter: the receiver, with a Wii Remote and Classic Controller or another
+Bluetooth pad paired to it, sends only format 3, and a Classic Controller
+switches when told. `tests/wii_pads_tb.sv` models both, and a clock-divider
+write lets a transfer in flight finish before the buses restart:
+
+```sh
+mkdir -p build/wii_pads_tb
+iverilog -g2012 -s wii_pads_tb -o build/wii_pads_tb/tb \
+  fpga/ae350_soc/wii_pads.sv tests/wii_pads_tb.sv
+vvp build/wii_pads_tb/tb
+```
+
 `FRAMES=0` runs until **HOME and Minus** are held together, which is how a play
 session ends; `PADTRACE=1` prints the raw report whenever it changes, which is
 how the button bits above were measured. `TN_PAD_LINES` (`0xe8040008`, SDA in
