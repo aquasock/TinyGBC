@@ -1061,3 +1061,33 @@ Nothing here has been on the board: the deployment is the next step when the use
 - User Test: NOT RUN
 
 ---
+
+## 32 COMMIT Unreleased 2026-10-27T10:02:15-07:00
+
+#### Coming From:
+
+Unreleased db74a3c
+
+#### Purpose:
+
+Deploy entry 31's picture settings and record what the board reports for them, correcting the artifact identity that entry left wrong.
+
+#### Outcome:
+
+The player deployed is `80f8eedd` in 3,247,432 bytes, not the `d198c49e` entry 31 recorded: that build had a stale `main.cpp.o`, and forcing a recompile of the committed source twice produces `80f8eedd` both times. The difference matters because the header change the stale object may have missed is the one that makes Off the default colour correction, so had it shipped the first launch would have silently turned the LCD correction on and moved the picture every recorded checksum describes. The TinyTang firmware was flashed as `b8768a6-dirty.e0c2ba0` and `platform` reported it after a power cycle. On the board the launcher's answer arrived with the new bytes in place and the player read them back, `ae350run: settings /tinygbc.ini, volume=20, clock not set, a=b, palette off, colour off` and `TinyGBC GB VIDEO PALETTE=Off COLOUR=Off`, and with `palette = dmg` written into the file, `ae350run: settings /tinygbc.ini, volume=20, clock not set, a=b, palette dmg, colour off` and `TinyGBC GB VIDEO PALETTE=DMG COLOUR=Off`, both runs on Super Mario Land, a monochrome cartridge. The settings request now precedes the core's own line as intended: `TinyGBC SETTINGS WANT 4005dcb8 00000018` appears before `TinyGBC GB CORE=`, so the options are in place when `retro_load_game` reads them. One thing is not measured: the run that would have shown a non-zero colour byte reaching the board, `colour = accurate` on RetroRegen's test cartridge, completed, `VIDEO=859e8f71 AUDIO=f719e173` over 300 frames, but its console capture lost the player's `VIDEO PALETTE=` line, so the colour byte is proven only on the PC. Twice during this cycle `ae350run` stopped returning to the shell and the board needed a power cycle, once after a run whose program stopped without exiting; the second time left `/tinygbc.ini` holding the test value `colour = accurate` and `/root/ae350/tinygbc-carttest.elf`, the frame-limited player used for these runs, on the card, with the TinyGBC core loaded, so the board is not in the state it should be handed over in. The user has not yet judged the palettes or the page on a monitor. The core-syntax audit re-read `.ai/core.md` and `.ai/core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `.ai/core.md` was not changed and entries 1 to 31 were not rewritten, and validated this entry as number 32 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and `None.` in Files Modified.
+
+#### Next Steps:
+
+The board needs a power cycle and then three commands: put the user's `/tinygbc.ini` back without the test value, delete `/root/ae350/tinygbc-carttest.elf`, and load the desktop core. After that the picture settings are the user's to judge: the six palettes on a monochrome cartridge, Accurate and Fast on a colour one, and the greyed palette row after a `.gbc` has been played and reselected. Two things now stand above the older items: `ae350run` not returning after a run that stops without exiting, which cost two power cycles today and is the same freeze entry 26 recorded, and the link that loses the head of a request line, which entry 30 settled but did not retry for the save, clock and state requests.
+
+#### Files Modified:
+
+None.
+
+#### Status:
+
+- Build: PASS
+- Deployment: PASS
+- User Test: NOT RUN
+
+---
