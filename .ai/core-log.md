@@ -1271,3 +1271,33 @@ None.
 - User Test: PASS
 
 ---
+
+## 39 COMMIT Unreleased 2026-10-27T13:12:44-07:00
+
+#### Coming From:
+
+Unreleased 40b598c
+
+#### Purpose:
+
+Re-record the Oracle of Seasons baselines that entry 29 showed had never reproduced, from both the PC and the board, and pin them to the artifacts they were measured with.
+
+#### Outcome:
+
+The boot-script run now reads `VIDEO=95513058 AUDIO=0630f3c5 SAMPLES=13167010` at 24,000 frames, on the PC twice and on the A25 once, with the same cartridge, the same `tests/zelda_input.txt` and the same source; the A25 run measured `AVG=4535 MIN=216 MAX=9171 OVER=0 SPEED=369.1%` and printed its own core line, `ROM=1048576 CRC=d7e9f5d7 CGB=1`, loaded with `tools/load_ae350.py --tinytang` after a `tangload` of the card's `/root/cores/console138k/tinygbc.bin`. The walk run now reads `VIDEO=278bd312 AUDIO=45ac9983 SAMPLES=1975050` at 3,600 frames, on the PC over three runs and on the A25 once (`AVG=5034 MIN=4375 MAX=5886 SPEED=332.5%`), and it is recorded against the savestate that exists rather than the one the fixture used to name: `build/firmware/apps/gb_play/gb_play.state`, 59,629 bytes, SHA-256 `c0c54bcea6757d48e8bf9568c54f77732dc382570c8d54490e6ed9af5ec6df49`, which replaced `49d4a697...` when the play build began writing its state on exit (entry 9) and had left that line unreproducible by anyone. `tests/gb_bench_expected.txt` now says what the old figure was, why it could not be trusted -- entry 29 rebuilt `d21c72a` and got `95513058` twice, so `900c74b5` came from a working state during entry 2's cycle that was never committed -- and that AVG, MIN and MAX move with the machine and between runs while the three checksums do not. The uCity baselines were not touched and were re-verified in this cycle's earlier work, `VIDEO=aaddaa41 AUDIO=a36b5633` and `DISPLAY FB=d6e86438`. The cartridge's SHA-256 `862a5136...` and the script's 647 presses are unchanged, so the two runs describe the same game and the same input as before. Only the fixture changed; no source was touched, and the two AE350 programs built for the A25 half were the benchmark build itself with the cartridge and then the state compiled in. The core-syntax audit re-read `.ai/core.md` and `.ai/core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `.ai/core.md` was not changed and entries 1 to 38 were not rewritten, and validated this entry as number 39 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and only eligible path in Files Modified.
+
+#### Next Steps:
+
+What the fixture still lacks is anything that runs it: `gb_bench_expected.txt` is read by no tool, so these numbers are only as good as the next person to compare them by eye, which is how the last set survived four cycles while being wrong. A `tools/test_gb_bench.sh` that builds each PC variant, runs it, and diffs the `VIDEO`, `AUDIO` and `SAMPLES` fields against the file would close that, and it can do nothing about the A25 lines, which need the board. Beyond that the left stick and the paced console run that makes no frames stand as before.
+
+#### Files Modified:
+
+- tests/gb_bench_expected.txt
+
+#### Status:
+
+- Build: N/A
+- Deployment: N/A
+- User Test: N/A
+
+---

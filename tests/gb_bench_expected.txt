@@ -14,20 +14,37 @@ TinyGBC GB FRAMES=1800 AVG=4110 MIN=3697 MAX=7283 OVER=0 SPEED=407.3% SAMPLES=98
 # 862a51368fb30539279d336b3fe193b43876d2cb15c87a36f5da517804ab3971, CGB 0xC0,
 # MBC5+RAM+BATTERY 0x1B, driven by tests/zelda_input.txt (647 presses,
 # START and A alternating every 60 frames from 600 to 20,000), 24,000 frames.
-# PC:
-TinyGBC GB FRAMES=24000 AVG=60 MIN=2 MAX=184 OVER=0 SPEED=27903.3% SAMPLES=13167010 VIDEO=900c74b5 AUDIO=0630f3c5
-# On the A25, same program, same script, after tangload of ae350_soc.bin:
-TinyGBC GB FRAMES=24000 AVG=4565 MIN=215 MAX=9222 OVER=0 SPEED=366.7% SAMPLES=13167010 VIDEO=900c74b5 AUDIO=0630f3c5
+#
+# These numbers were re-recorded on 2026-10-27 (core-log entry 39). The pair
+# they replace said VIDEO=900c74b5, which no build of this tree has ever
+# produced: entry 29 rebuilt d21c72a, the commit that recorded it, and got
+# 95513058 twice. So that figure came from a working state during entry 2's
+# cycle that was never committed, and until this re-record the line could not
+# do its job -- it read as a mismatch against every build, including a correct
+# one. Nothing about the emulation changed; the same source, cartridge and
+# script give 95513058 on the PC and on the A25, twice.
+# PC. AVG, MIN and MAX move with the machine and between runs; VIDEO, AUDIO
+# and SAMPLES do not. Two runs gave these:
+TinyGBC GB FRAMES=24000 AVG=66 MIN=2 MAX=173 OVER=0 SPEED=25366.6% SAMPLES=13167010 VIDEO=95513058 AUDIO=0630f3c5
+TinyGBC GB FRAMES=24000 AVG=66 MIN=2 MAX=256 OVER=0 SPEED=25366.6% SAMPLES=13167010 VIDEO=95513058 AUDIO=0630f3c5
+# On the A25, the same program and script, loaded with
+# tools/load_ae350.py --tinytang after tangload of
+# /root/cores/console138k/tinygbc.bin:
+TinyGBC GB FRAMES=24000 AVG=4535 MIN=216 MAX=9171 OVER=0 SPEED=369.1% SAMPLES=13167010 VIDEO=95513058 AUDIO=0630f3c5
 
-# From the savestate the user took in the overworld (frame 7872 of the play
-# build, 59,629 bytes, SHA-256
-# 49d4a6971587ce6bcc6ca10ca321dbdfeffe225d7fa776fdb44aead0b90484cf),
-# walking right, down, left and up in 600-frame blocks (tests/zelda_walk.txt),
-# 3,600 frames. The state is a derivative of the cartridge and stays in build/.
-# PC:
-TinyGBC GB FRAMES=3600 AVG=75 MIN=54 MAX=202 OVER=0 SPEED=22322.6% SAMPLES=1975050 VIDEO=42c0e370 AUDIO=b0c1088a
+# From a savestate taken in the overworld, walking right, down, left and up in
+# 600-frame blocks (tests/zelda_walk.txt), 3,600 frames. The state is a
+# derivative of the cartridge and stays in build/, so this line names the exact
+# one it was recorded from: build/firmware/apps/gb_play/gb_play.state, 59,629
+# bytes, SHA-256
+# c0c54bcea6757d48e8bf9568c54f77732dc382570c8d54490e6ed9af5ec6df49.
+# It replaces a state of 49d4a697... that the play build overwrote (core-log
+# entry 9), which had left this baseline unreproducible by anyone.
+# PC. Three runs gave the same checksums while AVG, MIN and MAX moved between
+# them; this is one of the three:
+TinyGBC GB FRAMES=3600 AVG=81 MIN=60 MAX=153 OVER=0 SPEED=20669.1% SAMPLES=1975050 VIDEO=278bd312 AUDIO=45ac9983
 # On the A25:
-TinyGBC GB FRAMES=3600 AVG=5063 MIN=4265 MAX=6118 OVER=0 SPEED=330.6% SAMPLES=1975050 VIDEO=42c0e370 AUDIO=b0c1088a
+TinyGBC GB FRAMES=3600 AVG=5034 MIN=4375 MAX=5886 OVER=0 SPEED=332.5% SAMPLES=1975050 VIDEO=278bd312 AUDIO=45ac9983
 
 # The same program with DISPLAY=1, which converts each frame into the video
 # unit's 15-bit format and writes it into the frame buffer not being shown.
