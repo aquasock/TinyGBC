@@ -23,8 +23,8 @@ can be compared:
 TinyGBC GB CORE=gambatte ROM=<bytes> CRC=<crc32> CGB=<0|1> AV=160x144 FPS=... START=<us>
 TinyGBC GB F=<frame> AVG=<us> MAX=<us> VIDEO=<crc> AUDIO=<crc>
 TinyGBC GB FRAMES=<n> AVG=<us> MIN=<us> MAX=<us> OVER=<n> SPEED=<x.y>% SAMPLES=<n> VIDEO=<crc> AUDIO=<crc>
-TinyGBC GB DISPLAY FB=<crc> PACE=<0|1> [SHOWN=<n> SHOW=<us> VF=<n> LATE=<n> PIXELS=<n> BITS=<hex> PIXELS0=<n>]
-TinyGBC GB AUDIO SENT=<n> PAIRS=<n> FIX=<n> DROPS=<n> UNDERRUNS=<n> LEVEL=<n> US=<us>
+TinyGBC GB DISPLAY FB=<crc> PACE=<0|1> [MISSED=<n>] [SHOWN=<n> SHOW=<us> VF=<n> LATE=<n> PIXELS=<n> BITS=<hex> PIXELS0=<n>]
+TinyGBC GB AUDIO SENT=<n> PAIRS=<n> FIX=<n> SKIP=<n> DROPS=<n> UNDERRUNS=<n> LEVEL=<n> US=<us>
 ```
 
 The core is built with `VIDEO_RGB565`, its default integer (blipper) audio
@@ -45,19 +45,30 @@ run: `VF` display frames, `LATE` lines re-shown because their fetch was late,
 `PIXELS` lit screen pixels of the last whole frame, `BITS` the pixel bits ever
 seen set, and `PIXELS0` the lit count before the run started. Handover happens at most once per vertical blank, because
 the harness runs at about four times the Game Boy's rate, and the picture
-settles two frames after the write. `PACE=1` adds one emulated frame per Game
-Boy frame (16,742.7 us), which is how the picture is watched.
+settles two frames after the write. `PACE=1` paces the run for watching: on
+the AE350 one emulated frame for each vertical blank of the 60 Hz picture, as
+TinyNES does, waiting after each handover until the video unit shows it, so
+every frame is shown exactly once and the game runs 60 / 59.7275, 0.46
+percent, fast; on the PC one per Game Boy frame (16,742.7 us). Pacing the
+AE350 by the Game Boy's own 59.7275 Hz beat against the picture's 60 Hz every
+3.67 s, repeating a frame and skipping the next through each beat. `MISSED`
+counts blanks a frame was not ready for.
 
 `make AUDIO=1` plays the sound: gambatte hands over 32,768 Hz sample pairs and
 the Pmod I2S2's DAC and HDMI both run at 75 MHz / 1536 = 48,828.125 Hz, so the
 harness resamples, which is libretro's arrangement: the core reports its rate
-and the frontend converts to the sink's. 32,768 / 48,828.125 is exactly
-0.67108864 input samples per output sample, held as a Q32 phase step, and each
-output sample is interpolated linearly between the two input samples either
-side of it. The FIFO is primed with silence and kept at about 1,500 of its
-2,048 pairs, a repeated pair at a time, because the emulator's pacing is a hair
-slower than the DAC's clock; `FIX` counts those pairs, `DROPS` and `UNDERRUNS`
-are the unit's own counters, and `US` is what resampling costs per emulated
+and the frontend converts to the sink's. Paced to the picture the core makes
+70,224 / 128 = 548.625 pairs a frame at 60 frames a second, and 32,917.5 /
+48,828.125 is exactly 0.6741504 input samples per output sample (0.67108864
+unpaced), held as a Q32 phase step, and each output sample is interpolated
+linearly between the two input samples either side of it. The picture's
+74.25 MHz and the bus's 75 MHz come from the same 50 MHz crystal, so the two
+rates are locked. The FIFO is primed with 900 pairs of silence, and the level
+just after each frame's push is held between 1,200 and 1,500 of its 2,048
+pairs by repeating the newest pair or leaving pairs out of the next frame, a
+quarter of the distance outside the band a frame, between 2 and 64 pairs;
+`FIX` and `SKIP` count those pairs, `DROPS` and `UNDERRUNS` are the unit's own
+counters, and `US` is what resampling costs per emulated
 frame. The core's `AUDIO` checksum is untouched, so the PC and AE350 still
 compare. An unpaced run produces sound three times too fast for the DAC and
 will drop by design. The sound is mixed to mono before resampling, (L + R) / 2

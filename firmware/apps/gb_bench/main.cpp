@@ -34,8 +34,10 @@
 // exist only there, SHOWN being how many frames were handed over, SHOW the
 // average cost of one handover, and LATE, PIXELS and BITS what the video
 // unit's own registers report after the run. GB_PACE (make PACE=1) also
-// runs one emulated frame per Game Boy frame, which is how the picture is
-// watched at the rate the game runs.
+// paces the run for watching: on the AE350 one emulated frame for each
+// vertical blank of the 60 Hz picture, as TinyNES's player does, and on the PC
+// one for each Game Boy frame period. MISSED counts blanks that came and went
+// while a frame was still being made, so a frame was shown twice.
 //
 // CGB is the cartridge header's CGB flag byte ($0143), which tells whether the
 // image asks for a Color Game Boy; it is not a report of whether the game
@@ -320,7 +322,8 @@ enum { DISPLAY_MAX_W = 160 };
  * run at 75 MHz / 1536 = 48,828.125 Hz (AUD-001, DEV-020). Resampling here is
  * libretro's arrangement: the core reports its rate and the frontend converts
  * to the sink's. 32,768 / 48,828.125 is exactly 0.67108864 input samples per
- * output sample, which a Q32 phase step holds without drift, and each output
+ * output sample, or 0.6741504 when the run is paced to the 60 Hz picture
+ * (AUDIO_STEP_Q32), which a Q32 phase step holds without drift, and each output
  * sample is interpolated linearly between the two input samples either side of
  * it. A write to a full FIFO is dropped and counted by the unit itself.
  *
@@ -330,7 +333,15 @@ enum { DISPLAY_MAX_W = 160 };
  * panned hard to one side comes out at half its level, the usual cost of a
  * downmix. Stereo is a later choice, and the I2S unit and HDMI already carry
  * two channels. */
+#ifdef GB_PACE
+/* Paced to the 60 Hz picture, the core makes 70,224 / 128 = 548.625 pairs a
+ * frame at 60 frames a second, 32,917.5 Hz, and 32,917.5 / 48,828.125 is
+ * exactly 0.6741504. The picture's 74.25 MHz and the bus's 75 MHz come from
+ * the same 50 MHz crystal, so the two rates do not drift apart. */
+const uint64_t AUDIO_STEP_Q32 = 2895453921ull; /* 0.6741504 * 2^32, rounded */
+#else
 const uint64_t AUDIO_STEP_Q32 = 2882303762ull; /* 0.67108864 * 2^32, rounded */
+#endif
 const uint64_t AUDIO_ONE_Q32 = 1ull << 32;
 
 int16_t rs_prev, rs_cur;
@@ -343,14 +354,33 @@ int16_t audio_last;
 /* The master volume's gain (tn_volume_gain), which every pair is scaled by
  * before the FIFO; unity until the host says otherwise. */
 uint32_t audio_gain = TN_VOLUME_UNITY;
-unsigned audio_fix;
-/* One emulated frame carries about 818 pairs and the unit drains them over
- * the frame, so the reserve kept in the FIFO has to cover a whole frame plus
- * margin: 1,500 of 2,048 pairs. The emulator's pacing is a hair slower than
- * the DAC, so the level creeps down and is topped up two pairs at a time. */
-const unsigned AUDIO_LOW = 1500;
-const unsigned AUDIO_PRIME = 1100; /* room for one frame's push */
+unsigned audio_fix, audio_skipped;
+unsigned audio_skip;	/* pairs the resampler is still to leave out */
+/* One emulated frame carries about 814 pairs and the unit drains them over
+ * the frame, so the level just after a frame's push has to cover a whole
+ * frame plus margin, and stay far enough below the FIFO's 2,048 pairs that a
+ * frame made a few milliseconds late does not overflow it: the push lands
+ * after the drain it follows, and the time between pushes moves by up to
+ * about 3 ms, some 160 pairs. Paced to the picture, the core's rate and the
+ * DAC's are locked, so nothing moves the level but that jitter and a missed
+ * blank, and it is held between AUDIO_LOW and AUDIO_HIGH after each push by
+ * repeating the newest pair or leaving pairs out: a quarter of the distance
+ * outside the band each frame, at least AUDIO_TOPUP and at most AUDIO_STEP_MAX,
+ * so a level the start leaves far out settles within a few frames instead of
+ * overflowing for hundreds while two pairs a frame bring it back. */
+const unsigned AUDIO_LOW = 1200;
+const unsigned AUDIO_HIGH = 1500;
+const unsigned AUDIO_PRIME = 900; /* covers the first frame; its push lands in the band */
 const unsigned AUDIO_TOPUP = 2;
+const unsigned AUDIO_STEP_MAX = 64;
+
+unsigned audio_step(unsigned distance)
+{
+	const unsigned step = distance / 4;
+
+	return step < AUDIO_TOPUP ? AUDIO_TOPUP :
+	       step > AUDIO_STEP_MAX ? AUDIO_STEP_MAX : step;
+}
 
 int16_t audio_lerp(int16_t a, int16_t b, uint64_t pos)
 {
@@ -374,9 +404,14 @@ void audio_resample(const int16_t *data, size_t frames)
 		while (rs_pos < AUDIO_ONE_Q32) {
 			audio_last = (int16_t)tn_volume_apply(
 				audio_lerp(rs_prev, rs_cur, rs_pos), audio_gain);
-			TN_AUDIO_DATA = ((uint32_t)(uint16_t)audio_last << 16) |
-					(uint16_t)audio_last;
-			audio_pairs++;
+			if (audio_skip) {
+				audio_skip--;
+				audio_skipped++;
+			} else {
+				TN_AUDIO_DATA = ((uint32_t)(uint16_t)audio_last << 16) |
+						(uint16_t)audio_last;
+				audio_pairs++;
+			}
 			rs_pos += AUDIO_STEP_Q32;
 		}
 		rs_pos -= AUDIO_ONE_Q32;
@@ -1441,6 +1476,11 @@ int main()
 	const uint32_t video_frames0 = TN_VIDEO_FRAMES;
 	const uint32_t video_late0 = TN_VIDEO_LATE;
 	const uint32_t video_pixels0 = TN_VIDEO_PIXELS;
+#ifdef GB_PACE
+	uint32_t pace_vbl = TN_VIDEO_FRAMES;
+	unsigned missed = 0;
+	unsigned paced_shown = 0;	/* shown as of the last pace */
+#endif
 #endif
 #endif
 
@@ -1550,19 +1590,23 @@ int main()
 			uint64_t a0 = ticks();
 
 			audio_resample(audio_copy, audio_copy_frames);
-			/* The emulator's pacing is a hair slower than the DAC's clock,
-			 * so the FIFO drains over a long run; repeat the newest pair
-			 * when the reserve is short rather than let the unit underrun. */
+			/* Repeat the newest pair when the reserve is short, rather
+			 * than let the unit underrun, and leave pairs out of the next
+			 * frame when it is long, rather than let it overflow. */
 			if (audio_pairs) {
 				unsigned level = TN_AUDIO_LEVEL(TN_AUDIO_STATUS);
 
-				for (unsigned k = 0;
-				     k < AUDIO_TOPUP && level < AUDIO_LOW; k++) {
+				if (level > AUDIO_HIGH)
+					audio_skip = audio_step(level - AUDIO_HIGH);
+
+				const unsigned add = level < AUDIO_LOW ?
+					audio_step(AUDIO_LOW - level) : 0;
+
+				for (unsigned k = 0; k < add; k++) {
 					TN_AUDIO_DATA =
 						((uint32_t)(uint16_t)audio_last
 						 << 16) |
 						(uint16_t)audio_last;
-					level++;
 					audio_fix++;
 				}
 			}
@@ -1622,10 +1666,43 @@ int main()
 		iv_frames++;
 
 #ifdef GB_PACE
+#if defined(__riscv)
+		/* One emulated frame for each vertical blank of the 60 Hz picture,
+		 * as TinyNES's player does: a frame handed over is waited for until
+		 * STATUS names it, which is the blank that shows it, and the next
+		 * frame is made after that, so every frame is shown once. Pacing by
+		 * the Game Boy's own 59.7275 Hz instead beat against the picture's
+		 * 60 Hz every 3.67 s, repeating one frame and skipping the next
+		 * through each beat (core-log entry 28). The game runs 60 / 59.7275,
+		 * 0.46 percent, fast, and the resampler's step is set to match. A
+		 * frame that was not handed over waits for the next blank alone. */
+		if (shown != paced_shown) {
+			const uint32_t want = TN_VIDEO_SHOWING |
+					      (pending ? TN_VIDEO_BUFFER : 0u);
+
+			while ((TN_VIDEO_STATUS & (TN_VIDEO_SHOWING | TN_VIDEO_BUFFER)) != want)
+				;
+		} else {
+			const uint32_t vbl = TN_VIDEO_FRAMES;
+
+			while (TN_VIDEO_FRAMES == vbl)
+				;
+		}
+		{
+			const uint32_t vbl = TN_VIDEO_FRAMES;
+
+			/* The first frame is counted from before the loop. */
+			if (f && vbl - pace_vbl > 1)
+				missed++;
+			pace_vbl = vbl;
+			paced_shown = shown;
+		}
+#else
 		/* One emulated frame per Game Boy frame, so the picture can be
 		 * watched at the rate the game runs. */
 		while (to_us(ticks() - a) < period_us)
 			;
+#endif
 #endif
 
 		/* A report that comes due while a state is going out waits for it,
@@ -1729,10 +1806,11 @@ int main()
 	{
 		const uint32_t st = TN_AUDIO_STATUS;
 
-		printf("TinyGBC GB AUDIO SENT=%u PAIRS=%u FIX=%u DROPS=%u"
+		printf("TinyGBC GB AUDIO SENT=%u PAIRS=%u FIX=%u SKIP=%u DROPS=%u"
 		       " UNDERRUNS=%u LEVEL=%u US=%u\n",
 		       (unsigned)(TN_AUDIO_FRAMES - audio_frames0), audio_pairs,
-		       audio_fix, (unsigned)(TN_AUDIO_DROPS - audio_drops0),
+		       audio_fix, audio_skipped,
+		       (unsigned)(TN_AUDIO_DROPS - audio_drops0),
 		       (unsigned)((st >> 16) - audio_under0),
 		       (unsigned)TN_AUDIO_LEVEL(st),
 		       (unsigned)(audio_us / (ran ? ran : 1)));
@@ -1746,6 +1824,9 @@ int main()
 	printf(" PACE=0");
 #endif
 #if defined(__riscv)
+#ifdef GB_PACE
+	printf(" MISSED=%u", missed);
+#endif
 	printf(" SHOWN=%u SHOW=%u VF=%u LATE=%u PIXELS=%u BITS=%04x PIXELS0=%u",
 	       shown, shown ? (unsigned)(show_us / shown) : 0u,
 	       (unsigned)(TN_VIDEO_FRAMES - video_frames0),

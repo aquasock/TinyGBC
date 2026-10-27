@@ -931,3 +931,35 @@ The user should confirm in RetroRegen GBC Test's Sound Test that the left, right
 - User Test: NOT RUN
 
 ---
+
+## 28 COMMIT Unreleased 2026-10-27T07:29:34-07:00
+
+#### Coming From:
+
+Unreleased f6a1c7e
+
+#### Purpose:
+
+Remove the stutter the user saw in Jayro's Test Cart's tearing test and at Zelda's screen transitions by pacing the player to the HDMI picture as TinyNES does, and record the user's pass of entry 27's mono mix.
+
+#### Outcome:
+
+The user tested entry 27's mono mix after it was committed and reported that left and right sound the same, and the sound slightly louder, which is expected: a sound the game panned to one side now reaches both sides at half its level; entry 27's user test, recorded as not run, is therefore passed here. The stutter was measured before it was changed: in the user's 27-second 60 fps HDMI capture of Jayro's Test Cart v3.0.1's tearing test, the per-frame scroll of the steady 2-pixel vertical pan ran clean for a few seconds and then repeated and skipped frames for about 70 frames, in bursts about 3.5 s apart, 64 of 375 frames off pace. The player paced itself at the Game Boy's 59.7275 Hz while the picture runs at exactly 60 Hz, 74.25 MHz over 1,650 by 750, and the two beat every 1 / (60 - 59.7275) = 3.67 s; near each alignment a frame finished just after a blank and the handover rule held it, so one frame showed twice and the next was lost. No other Game Boy emulator is installed on this PC for a comparison, so the reference used was gambatte itself through scratch harnesses built from the PC objects. In `firmware/apps/gb_bench/main.cpp` the AE350's `GB_PACE` now waits after each handover until `TN_VIDEO_STATUS` names the new buffer, which `video.sv` sets as vertical blank begins, and waits for the next blank alone when nothing was handed over, so one emulated frame runs per 60 Hz blank and each is shown once; the game runs 0.46 percent fast. `MISSED` counts blanks a frame was not ready for, the first frame excepted, and the PC keeps its timer pacing. With the picture's and the bus's clocks both from the 50 MHz crystal, the resampler's step became 0.6741504 exactly, 32,917.5 over 48,828.125, as Q32 `2895453921`. Locking the rates removed the slow drain the FIFO's top-up had relied on, and the first A25 run, uCity 1.3 for 1,800 frames, showed `MISSED=0`, `SHOWN=1800`, `VF=1800` and the PC's checksums but `DROPS=324`: the level after each push sat near 1,900 of 2,048 pairs and up to 3 ms of jitter in when a frame ends overflowed it. The level after each push is now held between 1,200 and 1,500 by repeating the newest pair or leaving pairs out of the next frame, a quarter of the distance outside the band each frame, between 2 and 64 pairs, the FIFO is primed with 900 pairs instead of 1,100, and the report gained `SKIP`. Intermediate settings gave 5 underruns with a 500-pair prime, and 136 drops with a fixed two-pair correction while a high start took 300 frames to come down; the final build gave `DROPS=0 UNDERRUNS=0 MISSED=0` in three successive 30 s runs and in a 3-minute run of 10,800 frames, with `SHOWN` equal to the frames each time and the PC's checksums, `VIDEO=aaddaa41 AUDIO=a36b5633` for 1,800 frames. `make CARD=1` built `tinygbc-play.elf`, 3,242,996 bytes, SHA-256 `de8157a01aed57d75c6abc61327e5aab78d567d15d39112532b1610009389021`, which the committed tree rebuilds byte for byte, and it was put at `/root/ae350/tinygbc-play.elf` with the desktop core restored. The user's second capture found the bursts gone and a single held frame about once a second in the 1-pixel pans, 65 frames apart at frames 204, 269, 432 and 497, each a step of 0 followed by normal steps, and a run of five in the 2-pixel pan. The same test driven on the PC (Start at frame 900, A for Screen, Down twice and A for Tearing/Ghosting, A to begin), measured on gambatte's own frames, holds a frame every 65 frames in the 1-pixel pan and five in a row in the 2-pixel pan, so those are the cartridge's own output, which states it was made in GB Studio, and the board now reproduces the emulator. Walking Link from the overworld state across a screen edge on the PC gave no dupe in 2,400 frames, and over 3,000 frames of four cartridges gambatte dupes rarely and irregularly. The user then passed everything: sound perfect and Zelda's transitions perfect. README describes the pacing, the step and the band, and the Makefile's `PACE` comment matches. The core-syntax audit re-read `.ai/core.md` and `.ai/core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `.ai/core.md` was not changed and entries 1 to 27 were not rewritten, and validated this entry as number 28 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and only eligible paths in Files Modified.
+
+#### Next Steps:
+
+Nothing is outstanding from this cycle. The board's clock can still be unset at a launch after a replug, which leaves that session without a cartridge clock and says nothing, as entry 26 recorded. The left stick, the Input and Video pages and the stale Oracle of Seasons boot figure in `tests/gb_bench_expected.txt` stand.
+
+#### Files Modified:
+
+- README.md
+- firmware/apps/gb_bench/Makefile
+- firmware/apps/gb_bench/main.cpp
+
+#### Status:
+
+- Build: PASS
+- Deployment: PASS
+- User Test: PASS
+
+---
