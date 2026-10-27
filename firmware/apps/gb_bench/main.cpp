@@ -55,6 +55,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 
 #ifdef __riscv
 #include "tinygbc.h"
@@ -63,8 +64,6 @@
 #include "load.h"    /* the boot ROM's loader, for the cartridge the launcher sends */
 #include "cart_zip.h" /* and the zip reader, for one sent as an archive */
 #endif
-#else
-#include <ctime>
 #endif
 
 #include "libretro.h"
@@ -440,15 +439,20 @@ const uint8_t *receive_cart(size_t &size)
 }
 
 /* What the host fills, in one headerless blob: the master volume in percent
- * and the mute, from /gbc.ini. These bytes are the ABI with the host (TinyTang
+ * and the mute, from /tinygbc.ini, and the host's clock in seconds since 1970
+ * UTC, 0 when it has none. These bytes are the ABI with the host (TinyTang
  * ports/bl616/tang_fpga_uart.c), so the two sides change together, and the
  * program asks for sizeof this. What is here is what it keeps when the host
- * says nothing or sends fewer bytes: full volume, not muted. */
+ * says nothing or sends fewer bytes, as one built before the clock was added
+ * does: full volume, not muted, and no date. */
 struct HostSettings {
 	uint8_t volume;
 	uint8_t mute;
+	uint8_t reserved[6];
+	int64_t utc;
 };
-HostSettings host_settings = { 100, 0 };
+static_assert(sizeof(HostSettings) == 16, "the settings blob is 16 bytes");
+HostSettings host_settings = { 100, 0, {}, 0 };
 
 /* Ask the host for the settings, as TinyNES's player does: the answer lands
  * directly in host_settings in the loader's protocol, and nothing arriving
@@ -467,39 +471,48 @@ void receive_settings()
 }
 #endif
 
-/* A battery-backed cartridge's save RAM, gambatte's own buffer
- * (RETRO_MEMORY_SAVE_RAM), null for a cartridge with no battery. The card's
- * .sav is taken into it before the first frame and given back when the run
- * ends. save_start_crc is what it held as the game began, so a run that
- * never wrote it does not write the card. */
-uint8_t *save_ram;
-uint32_t save_len;
-[[maybe_unused]] uint32_t save_start_crc;
+/* A file the card keeps for the cartridge, held in one of gambatte's own
+ * buffers: the battery save (RETRO_MEMORY_SAVE_RAM, the .sav) and the clock of
+ * an MBC3 or HuC3 cartridge (RETRO_MEMORY_RTC, the .rtc), which is gambatte's
+ * 8-byte baseTime, the second since 1970 at which the cartridge's clock read
+ * zero, kept apart from the save as RetroArch keeps it. The card's copy is
+ * taken into the buffer before the first frame and given back when the run
+ * ends; start_crc is what the buffer held as the game began, so a run that
+ * never changed it does not write the card. */
+struct CardFile {
+	const char *channel;	/* TinyTang's channel: NVRAM or RTC */
+	uint8_t *buf = nullptr;	/* null when the cartridge has none */
+	uint32_t len = 0;
+	uint32_t start_crc = 0;
 
-/* A save the game never wrote is still what the core allocated: every byte
- * the same. Worth saying, because a blank file and a real one look identical
- * from the card. */
-[[maybe_unused]] bool save_is_blank()
-{
-	for (uint32_t i = 1; i < save_len; i++) {
-		if (save_ram[i] != save_ram[0])
-			return false;
+	/* A file nobody wrote is still what the core allocated: every byte the
+	 * same. Worth saying, because a blank file and a real one look identical
+	 * from the card. */
+	bool blank() const
+	{
+		for (uint32_t i = 1; i < len; i++) {
+			if (buf[i] != buf[0])
+				return false;
+		}
+		return true;
 	}
-	return true;
-}
+};
+CardFile sram = { "NVRAM" };
+[[maybe_unused]] CardFile rtc = { "RTC" };
 
 #ifdef GB_CART
-/* Ask the host for the cartridge's .sav and take it straight into the core's
+/* Ask the host for the cartridge's file and take it straight into the core's
  * buffer, in the boot ROM's load protocol, as TinyNES's player does and with
- * the lines TinyTang's ae350run answers for either product name (saves under
+ * the lines TinyTang's ae350run answers for either product name (files under
  * /root/saves/gbc/). Nothing arriving within about a second means the game
- * has no save yet, the usual case, and leaves the blank buffer alone. */
-void receive_save()
+ * has no such file yet, the usual case, and leaves the buffer alone. True
+ * when the file arrived. */
+bool receive_file(const CardFile &file)
 {
-	if (!save_ram || !save_len)
-		return;
-	printf("TinyGBC NVRAM WANT %08lx %08lx\n", (unsigned long)(uintptr_t)save_ram,
-	       (unsigned long)save_len);
+	if (!file.buf || !file.len)
+		return false;
+	printf("TinyGBC %s WANT %08lx %08lx\n", file.channel,
+	       (unsigned long)(uintptr_t)file.buf, (unsigned long)file.len);
 	fflush(stdout);
 	tn_load_reset();
 	uint32_t got = 0;
@@ -507,13 +520,14 @@ void receive_save()
 	for (int step = 0; step < 10 && !got; step++)
 		got = tn_load_poll(TN_CORE_HZ / 10);
 	/* The load's own checksums judge the payload, and its entry says which
-	 * buffer it was framed for: anything else is not this save. */
-	if (got != (uintptr_t)save_ram)
-		return;
-	printf("TinyGBC NVRAM GOT %lu %08lx%s\n", (unsigned long)save_len,
-	       (unsigned long)crc_update(0, save_ram, save_len),
-	       save_is_blank() ? " BLANK" : "");
+	 * buffer it was framed for: anything else is not this file. */
+	if (got != (uintptr_t)file.buf)
+		return false;
+	printf("TinyGBC %s GOT %lu %08lx%s\n", file.channel, (unsigned long)file.len,
+	       (unsigned long)crc_update(0, file.buf, file.len),
+	       file.blank() ? " BLANK" : "");
 	fflush(stdout);
+	return true;
 }
 
 /* Let the link's line out and leave it quiet a moment: the first bytes after a
@@ -528,37 +542,37 @@ void save_pace()
 		;
 }
 
-/* Give the save RAM back as text, in TinyNES's form: link mode frames lines
- * and drops carriage returns, so the bytes go as hex, 32 to a line, between a
- * SAVE line carrying the length and CRC-32 and a DONE line, which ae350run
- * checks before it replaces the card's file. A save the run did not change is
- * not sent, so the card keeps its copy and the exit costs nothing. */
-void send_save()
+/* Give the file back as text, in TinyNES's form: link mode frames lines and
+ * drops carriage returns, so the bytes go as hex, 32 to a line, between a SAVE
+ * line carrying the length and CRC-32 and a DONE line, which ae350run checks
+ * before it replaces the card's file. A file the run did not change is not
+ * sent, so the card keeps its copy and the exit costs nothing. */
+void send_file(const CardFile &file)
 {
-	if (!save_ram || !save_len)
+	if (!file.buf || !file.len)
 		return;
-	const uint32_t crc = crc_update(0, save_ram, save_len);
+	const uint32_t crc = crc_update(0, file.buf, file.len);
 
-	if (crc == save_start_crc) {
-		printf("TinyGBC NVRAM SAME %08lx\n", (unsigned long)crc);
+	if (crc == file.start_crc) {
+		printf("TinyGBC %s SAME %08lx\n", file.channel, (unsigned long)crc);
 		fflush(stdout);
 		tn_wait_tx_idle();
 		return;
 	}
 	for (int lead = 0; lead < 3; lead++) {
-		printf("TinyGBC NVRAM BEGIN\n");
+		printf("TinyGBC %s BEGIN\n", file.channel);
 		save_pace();
 	}
-	printf("TinyGBC NVRAM SAVE %lu %08lx%s\n", (unsigned long)save_len,
-	       (unsigned long)crc, save_is_blank() ? " BLANK" : "");
+	printf("TinyGBC %s SAVE %lu %08lx%s\n", file.channel, (unsigned long)file.len,
+	       (unsigned long)crc, file.blank() ? " BLANK" : "");
 	save_pace();
 	const char *const digits = "0123456789abcdef";
 	char hex[65];
 	unsigned n = 0;
 
-	for (uint32_t i = 0; i < save_len; i++) {
-		hex[n++] = digits[save_ram[i] >> 4];
-		hex[n++] = digits[save_ram[i] & 15];
+	for (uint32_t i = 0; i < file.len; i++) {
+		hex[n++] = digits[file.buf[i] >> 4];
+		hex[n++] = digits[file.buf[i] & 15];
 		if (n == 64) {
 			hex[n] = 0;
 			printf("%s\n", hex);
@@ -571,7 +585,7 @@ void send_save()
 		printf("%s\n", hex);
 		save_pace();
 	}
-	printf("TinyGBC NVRAM DONE %08lx\n", (unsigned long)crc);
+	printf("TinyGBC %s DONE %08lx\n", file.channel, (unsigned long)crc);
 	tn_wait_tx_idle();
 	save_pace();
 }
@@ -1276,30 +1290,30 @@ int main()
 	if (state_size)
 		printf("TinyGBC GB STATE=%u LOADED\n", (unsigned)state_size);
 
-	save_ram = static_cast<uint8_t *>(retro_get_memory_data(RETRO_MEMORY_SAVE_RAM));
-	save_len = save_ram ? (uint32_t)retro_get_memory_size(RETRO_MEMORY_SAVE_RAM) : 0;
+	sram.buf = static_cast<uint8_t *>(retro_get_memory_data(RETRO_MEMORY_SAVE_RAM));
+	sram.len = sram.buf ? (uint32_t)retro_get_memory_size(RETRO_MEMORY_SAVE_RAM) : 0;
 #ifndef __riscv
 	/* GB_SAVE=<file> stands in for the card on the PC: a file of the save's
 	 * size is taken into the save RAM before the first frame, and the save RAM
 	 * is written back to it at the end. */
 	const char *save_path = getenv("GB_SAVE");
-	if (save_path && save_len) {
+	if (save_path && sram.len) {
 		if (FILE *in = fopen(save_path, "rb")) {
-			const bool whole = fread(save_ram, 1, save_len, in) == save_len &&
+			const bool whole = fread(sram.buf, 1, sram.len, in) == sram.len &&
 					   fgetc(in) == EOF;
 			fclose(in);
 			if (!whole) {
 				printf("TinyGBC GB NVRAM BAD SIZE\n");
 				return 1;
 			}
-			printf("TinyGBC GB NVRAM LOADED %u %08x\n", (unsigned)save_len,
-			       (unsigned)crc_update(0, save_ram, save_len));
+			printf("TinyGBC GB NVRAM LOADED %u %08x\n", (unsigned)sram.len,
+			       (unsigned)crc_update(0, sram.buf, sram.len));
 		}
 	}
 #endif
 #ifdef GB_CART
-	receive_save();
-	save_start_crc = crc_update(0, save_ram, save_len);
+	(void)receive_file(sram);
+	sram.start_crc = crc_update(0, sram.buf, sram.len);
 	/* The one save state, in the SDRAM: L saves into it, R loads it. The
 	 * card's copy of the cartridge's state is taken into it now, not loaded. */
 	if (state_alloc(quick))
@@ -1316,6 +1330,28 @@ int main()
 #endif
 	printf("TinyGBC GB VOLUME=%u%s\n", (unsigned)host_settings.volume,
 	       host_settings.mute ? " MUTED" : "");
+	/* The date, when the host's clock has one: time() runs on from it, so an
+	 * MBC3 or HuC3 cartridge's clock counts real time, the time the board was
+	 * off included, and its .rtc means the same thing in every session.
+	 * Without a date time() counts from reset, and no .rtc is read or written,
+	 * so a clock that never knew the date is never kept. */
+	if (host_settings.utc > 0) {
+		tn_rt_set_date(host_settings.utc);
+		rtc.buf = static_cast<uint8_t *>(retro_get_memory_data(RETRO_MEMORY_RTC));
+		rtc.len = rtc.buf ? (uint32_t)retro_get_memory_size(RETRO_MEMORY_RTC) : 0;
+		rtc.start_crc = crc_update(0, rtc.buf, rtc.len);
+		/* No .rtc yet is a cartridge never played here: its clock starts at
+		 * zero now, as a new cartridge's would, rather than at gambatte's
+		 * baseTime of 0, which reads as some 20,000 days. The buffer then
+		 * differs from start_crc, so the exit writes the .rtc. */
+		if (!receive_file(rtc) && rtc.len == sizeof(uint64_t)) {
+			const uint64_t now = (uint64_t)time(nullptr);
+
+			memcpy(rtc.buf, &now, sizeof now);
+		}
+	}
+	printf("TinyGBC GB DATE=%lld RTC=%u\n", (long long)host_settings.utc,
+	       (unsigned)rtc.len);
 	/* Link mode last: from here this program's text goes out as TinyDesk
 	 * frames, the desk layer can sit over the picture, and the launcher that
 	 * started us knows the game is up. */
@@ -1719,20 +1755,21 @@ int main()
 #endif
 
 #ifdef GB_CART
-	send_save();
+	send_file(sram);
+	send_file(rtc);
 #endif
 #ifndef __riscv
-	if (save_path && save_len) {
+	if (save_path && sram.len) {
 		FILE *out = fopen(save_path, "wb");
 
-		if (!out || fwrite(save_ram, 1, save_len, out) != save_len) {
+		if (!out || fwrite(sram.buf, 1, sram.len, out) != sram.len) {
 			printf("TinyGBC GB NVRAM WRITE FAILED\n");
 			return 1;
 		}
 		fclose(out);
-		printf("TinyGBC GB NVRAM SAVED %u %08x%s\n", (unsigned)save_len,
-		       (unsigned)crc_update(0, save_ram, save_len),
-		       save_is_blank() ? " BLANK" : "");
+		printf("TinyGBC GB NVRAM SAVED %u %08x%s\n", (unsigned)sram.len,
+		       (unsigned)crc_update(0, sram.buf, sram.len),
+		       sram.blank() ? " BLANK" : "");
 	}
 #endif
 

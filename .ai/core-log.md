@@ -867,3 +867,36 @@ The clock of MBC3 and HuC3 cartridges, for Pokemon Gold, Silver and Crystal amon
 - User Test: PASS
 
 ---
+
+## 26 COMMIT Unreleased 2026-10-27T00:39:58-07:00
+
+#### Coming From:
+
+Unreleased 08a3525
+
+#### Purpose:
+
+Keep the clock of MBC3 and HuC3 cartridges, Pokemon Gold, Silver and Crystal among them, so a game's clock moves on with real time between sessions as a cartridge's battery would keep it.
+
+#### Outcome:
+
+gambatte d9d6cd06 counts an MBC3 or HuC3 clock as `std::time(0)` less an 8-byte `baseTime` (`libgambatte/src/mem/rtc.cpp`, `huc3.cpp`), which libretro exposes as `RETRO_MEMORY_RTC` and RetroArch keeps as a `.rtc` file beside the save; on the A25 `time()` was the cycle counter from reset, so a kept `baseTime` would have meant nothing across sessions. `firmware/rt/syscalls.c` gained `tn_rt_set_date`, declared with C linkage in `firmware/include/tinygbc.h`, which sets an offset from 1970 to the counter's zero so `time()` runs on from the date it is given and stays the counter alone until then. In `firmware/apps/gb_bench/main.cpp` the settings blob grew from two bytes to sixteen, the volume and the mute, six reserved bytes and the host's clock as UTC seconds, with a static assertion on its size; a launcher that sends two bytes leaves the date 0. The battery save's transfer became a `CardFile` per channel, `receive_file` and `send_file` replacing `receive_save` and `send_save` with the same lines under the channel's name, and a second `CardFile` carries the clock as the `RTC` channel. With a date the player calls `tn_rt_set_date`, asks with `TinyGBC RTC WANT` for the `.rtc` straight into gambatte's `baseTime`, sets a cartridge with none to the present so its clock starts at zero, and at HOME and MINUS sends the clock after the battery save when it differs from what it held at launch; without one nothing is read or written, and `TinyGBC GB DATE=<utc> RTC=<bytes>` reports which. `<ctime>` is now included for both builds. The uCity default run still ends `VIDEO=aaddaa41 AUDIO=a36b5633` and its `STATETEST=900` still matches. TinyTang's half is its entry 48: an `RTC` channel to `/root/saves/gbc/<cartridge>.rtc`, the clock in the TinyGBC settings reply and a clock line on the Saves page, flashed as `b10ae68-dirty.886b72a`. A scan of the user's library found seven cartridges with a clock, types 0x10 and 0xfe: E.T. - Digital Companion, Harvest Moon GBC, Mary-Kate and Ashley - Pocket Planner, Pokemon Crystal, Gold and Silver, and Robopon - Sun Version. The player the user tested, `tinygbc-play.elf` of 3,240,816 bytes, SHA-256 `f23f385db2bc31be7d752afeb77f9ae04b9464fea13d8e762ce0e605cda70f51`, also carries entry 27's mono mix; the clock alone was first deployed as `b312287c697792ee6d8771653c80bf80191571f15d61699891a957b0c67bc44a`. One launch from the console with `ae350run`, recorded over the console, reported `clock not set` and `DATE=0`, then stopped relaying after 450 frames, froze at exit and needed a power cycle with its save lost; the user identified holding the console during a run as a known cause of a failed core unload, and that run is not counted. Launched from the TinyGBC window, the user set Pokemon Gold's clock, saved in the game and left with HOME and MINUS, and the Saves page then read the battery save written whole at 00:31 with 32,768 bytes and the clock written whole at 00:31 with 8 bytes, both stamped with the date; the user then relaunched after a wait, found the save and an in-game clock that had moved from 10:07 to 10:09, and passed the cycle. The card could not be listed afterwards because the console was running the desktop. README describes the clock. The core-syntax audit re-read `.ai/core.md` and `.ai/core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `.ai/core.md` was not changed and entries 1 to 25 were not rewritten, and validated this entry as number 26 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and only eligible paths in Files Modified.
+
+#### Next Steps:
+
+The one recorded launch found the board's clock unset after a replug, so the player can be started without a date and then keeps no clock for that session, silently; the TinyGBC window could say so, or TinyTang could sync the RTC before answering. Frame pacing is next: the player paces itself at 59.7275 Hz against HDMI's 60 Hz, and a recording of Jayro's Test Cart showed bursts of repeated and skipped frames about every 3.5 s, the beat of the two rates, which the user also saw at Zelda's screen transitions; locking a frame to each vertical blank, as TinyNES does, with the resampler's step moved to 0.6741504 to match, is the proposed fix. The left stick, the Input and Video pages and the stale Oracle of Seasons boot figure in `tests/gb_bench_expected.txt` stand.
+
+#### Files Modified:
+
+- README.md
+- firmware/apps/gb_bench/main.cpp
+- firmware/include/tinygbc.h
+- firmware/rt/syscalls.c
+
+#### Status:
+
+- Build: PASS
+- Deployment: PASS
+- User Test: PASS
+
+---

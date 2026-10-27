@@ -170,9 +170,22 @@ which the launcher checks before it replaces the file; one that did not change
 prints `TinyGBC NVRAM SAME` and leaves the card's copy alone. The lines are
 paced at about 4 ms each, so an 8 KiB save takes about a second to go back and
 the largest, 128 KiB, about 18 seconds. Only HOME and MINUS save: a game left by
-any other way keeps the save it started with. The real-time clock of an MBC3 or
-HuC3 cartridge is not kept, because `time()` on the A25 is the core's cycle
-counter, which counts from reset rather than giving the date.
+any other way keeps the save it started with.
+
+The clock of an MBC3 or HuC3 cartridge, such as Pokemon Gold, Silver and
+Crystal or Harvest Moon GBC, is kept beside the save as
+`/root/saves/gbc/<cartridge>.rtc`, the 8-byte `baseTime` gambatte exposes as
+`RETRO_MEMORY_RTC`, the format RetroArch keeps. gambatte counts the clock as
+`time()` less `baseTime`, so `time()` has to give the date: the launcher's
+settings reply carries the board's clock in UTC seconds after the volume and
+the mute, sixteen bytes in all, and the runtime's `time()` runs on from it
+(`tn_rt_set_date`, `firmware/rt/syscalls.c`). With a date the player asks for
+the `.rtc` with `TinyGBC RTC WANT`, starts a cartridge that has none at zero,
+and at HOME and MINUS sends a changed one back in the battery save's form, so
+the game's clock moves on by the time the board was off, as a cartridge's
+battery would keep it. Without a date, when the board's clock has never been
+set or a launcher sends only two bytes, `time()` counts from reset as before
+and no `.rtc` is read or written.
 
 Save states work as TinyNES's do (TinyNES core-log entries 48 and 49): one
 state per cartridge, HOME with L to save and HOME with R to load, once a press

@@ -230,4 +230,12 @@ uint32_t tn_cycles(void);
 uint64_t tn_cycles64(void);
 #endif
 
+/* The runtime's time() is the cycle counter from reset until a program is told
+ * the date: tn_rt_set_date takes UTC seconds since 1970, as the host's clock
+ * gives them, and time() runs on from there (firmware/rt/syscalls.c). */
+#ifdef __cplusplus
+extern "C"
+#endif
+void tn_rt_set_date(int64_t utc);
+
 #endif

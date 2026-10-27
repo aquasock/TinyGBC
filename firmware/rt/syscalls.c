@@ -2,7 +2,8 @@
  *
  * The newlib system calls for runtime programs: standard output and error go
  * to the UART (\n sent as \r\n), standard input reads it, the heap runs from
- * _end to the top of the SDRAM, time is the core cycle counter. There are no
+ * _end to the top of the SDRAM, time is the core cycle counter, counted from
+ * the date once the program is given one (tn_rt_set_date). There are no
  * files or directories: opening, stat and directory calls fail. _exit and
  * traps report on the UART and restart the boot ROM, which waits for the
  * next program.
@@ -169,13 +170,22 @@ int _kill(int pid, int sig)
 	return -1;
 }
 
+/* Seconds from 1970 to the cycle counter's zero, once the program has been
+ * told the date; 0 until then, so time is the counter alone. */
+static int64_t date_offset;
+
+void tn_rt_set_date(int64_t utc)
+{
+	date_offset = utc - (int64_t)(tn_cycles64() / TN_CORE_HZ);
+}
+
 int _gettimeofday(struct timeval *tv, void *tz)
 {
 	uint64_t cycles = tn_cycles64();
 
 	(void)tz;
 	if (tv) {
-		tv->tv_sec = (time_t)(cycles / TN_CORE_HZ);
+		tv->tv_sec = (time_t)(date_offset + (int64_t)(cycles / TN_CORE_HZ));
 		tv->tv_usec = (suseconds_t)(cycles % TN_CORE_HZ /
 					    (TN_CORE_HZ / 1000000));
 	}
