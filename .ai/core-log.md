@@ -1091,3 +1091,33 @@ None.
 - User Test: NOT RUN
 
 ---
+
+## 33 COMMIT Unreleased 2026-10-27T10:47:37-07:00
+
+#### Coming From:
+
+Unreleased ef878cb
+
+#### Purpose:
+
+Record that the build entry 32 deployed will no longer start a game on the board, what was established about it, and which of the causes is mine.
+
+#### Outcome:
+
+Launching a Game Boy or Game Boy Color cartridge from the TinyGBC window now shows the fabric's colour bars and returns to TinyDesk without starting the game. The player is what dies. `/root/saves/last.log` shows runs at 10:33 to 10:35 reaching the player and asking for a save and a state, which is what a working launch does, and runs from 10:37 onward logging `--- run` and nothing else, so the player now exits before the state request. Two faults of mine sit in that window and one of them is enough on its own: I started `tangload` twice and let my reader close the console at twenty to twenty-five seconds when the 4.6 MB image takes about thirty-five, so both loads were cut short, and a half-loaded FPGA produces exactly this symptom, bars from the fabric and an AE350 that never runs. After a power cycle and a load that reported `tangload: core loaded` with `fpga` answering `core 84`, one console `ae350run` still logged `--- run` and nothing further, so the board's configuration is not proven to be the whole cause and the ordering change entry 31 made, which puts the settings request ahead of `retro_load_game`, is not cleared either. Neither is it implicated: the twenty-four byte settings reply worked at 10:33 against this same firmware and player, so the blob's length and the palette and colour bytes are not obviously at fault. The player's own error was never read, because from about 10:36 `ae350run` produced no console output at all, only the echoed command, while the same command had printed every line of its boot an hour earlier; that is unexplained and is the first thing to fix in the tooling, since without it a failed launch cannot be diagnosed from the console. I also told the user to read a status line on the Library page that does not exist, which cost a round trip. The user took the board back at 10:52 and asked that nothing connect to it; every console process I had started was killed and nothing has touched it since. The core-syntax audit re-read `.ai/core.md` and `.ai/core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `.ai/core.md` was not changed and entries 1 to 32 were not rewritten, and validated this entry as number 33 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and `None.` in Files Modified.
+
+#### Next Steps:
+
+The board is the user's and cannot be used until they offer it again. When it is free, the first run should be `tools/load_ae350.py --tinytang` on the benchmark build with uCity compiled in, which needs no cartridge, no settings and no state, because that separates the core and its new option answering from the cartridge and settings path in one run; the second should be the CART player, which only a launcher can feed. If the failure repeats, the isolation is to move `receive_settings()` back after `retro_load_game` and rebuild, which would leave the palette unable to apply but would say whether the ordering is the cause. Two lessons belong with the tooling: `tangload` must never be interrupted, since it needs about thirty-five seconds and a cut load leaves the FPGA half configured, and a reader that closes the port on a fixed timer is how that happens.
+
+#### Files Modified:
+
+None.
+
+#### Status:
+
+- Build: PASS
+- Deployment: PASS
+- User Test: FAIL
+
+---
