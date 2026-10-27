@@ -1301,3 +1301,33 @@ What the fixture still lacks is anything that runs it: `gb_bench_expected.txt` i
 - User Test: N/A
 
 ---
+
+## 40 COMMIT Unreleased 2026-10-27T13:14:17-07:00
+
+#### Coming From:
+
+Unreleased db56100
+
+#### Purpose:
+
+Record that the shell's `fpga` probe does not answer on this tree's core, so that a silent probe is not read as a broken FPGA, which is how it was read twice on 2026-10-27.
+
+#### Outcome:
+
+`fpga` asks the core for its ID over UART1 at 2 Mbaud. With the desktop core loaded it answers `core 84 answering on UART1 at 2000000 baud` -- 0x54, TinyTang's own -- and with this tree's core loaded it answers nothing at all. `fpga: no answer on UART1 at 2000000 baud (is a core loaded?)` therefore means either no core or a core that does not implement that reply, and `ae350_soc.sv`'s `desk_link` instantiation does not override the module's `CORE_ID` default of 0x4e, so the TinyGBC core is not the one answering 0x54. During this cycle that ambiguity was read as a half-configured FPGA twice, and both times a `tangload` was spent on a suspicion rather than on evidence; the loads themselves were fine, and the AE350 ran its programs under this tree's core with `fpga` silent throughout, including the two benchmark runs entry 39 records. Checked on the board today in both directions: after `tangload` of `tinytang.bin` the probe answers 0x54, and after `tangload` of `tinygbc.bin` it is silent while `tools/load_ae350.py --tinytang` runs a program on the AE350 normally. The core-syntax audit re-read `.ai/core.md` and `.ai/core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `.ai/core.md` was not changed and entries 1 to 39 were not rewritten, and validated this entry as number 40 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and `None.` in Files Modified.
+
+#### Next Steps:
+
+Either teach this tree's core to answer the core-ID probe, which is a `desk_link` parameter change and a rebuild with its own timing risk, or stop using `fpga` as the way to tell whether a load took and rely on `tangload`'s own `core loaded` line, which is what the tooling already prints and what the entries here quote. The second costs nothing and is the right rule until the first is wanted; a reference record for it belongs with whatever cycle next touches the core's identification. The left stick and the paced console run that makes no frames still stand.
+
+#### Files Modified:
+
+None.
+
+#### Status:
+
+- Build: N/A
+- Deployment: N/A
+- User Test: N/A
+
+---
