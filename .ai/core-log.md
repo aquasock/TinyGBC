@@ -1241,3 +1241,33 @@ Deploy the pair when the board is free and then test the case that failed: power
 - User Test: NOT RUN
 
 ---
+
+## 38 COMMIT Unreleased 2026-10-27T12:25:03-07:00
+
+#### Coming From:
+
+Unreleased ccb5685
+
+#### Purpose:
+
+Record the deployment and the user's acceptance of the clock fix, which entry 37 could only carry as not run.
+
+#### Outcome:
+
+The player deployed is 3,249,256 bytes with SHA-256 `62f475c934f2958db6c1b44d3975c79e607a081b971cc11c06c8c19034c684e0`, beside TinyTang's firmware `86d2424-dirty.455db9f`, and the clock is now kept. After a power cycle the user opened the TinyGBC window's Saves tab, which made the window read the clock while the desktop core still owned the I2C bus, and the board's log recorded `2026-10-27T12:21:11-07:00 clock: set, a cartridge's clock is kept` -- a real local time, where every previous run in that file had been stencilled `no-clock`. The user then launched Pokemon Gold and exited at its title screen, and the log shows what the fix was for: the run at `12:23:28` stamped with a real time, `want save: sent ...32768 bytes`, `want state: sent ...84237 bytes`, and `want clock: sent ...Pokemon - Gold Version....rtc, 8 bytes`, then at `12:23:47` `finish ...rtc: 8 of 8 bytes, crc 9eb5c4ef of 9eb5c4ef, whole` with `1 writes, 1 ms in all`. The date therefore reached the player, which read the cartridge's clock and wrote it back verified, which is the case that used to be silent and unkept. One correction belongs with it: entry 37 and the conversation said the RTC's presence had never been recorded, and that was wrong -- TinyTang's reference already carries it in BRD-011 and BRD-012, the Adafruit DS3231 at 0x68 on channel 6 of the PCA9548A behind the desktop core's I2C engine, so today confirmed a recorded fact rather than establishing a new one. The core-syntax audit re-read `.ai/core.md` and `.ai/core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `.ai/core.md` was not changed and entries 1 to 37 were not rewritten, and validated this entry as number 38 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and `None.` in Files Modified.
+
+#### Next Steps:
+
+The clock is settled. What remains is the user's decision to re-record entry 29's Oracle of Seasons baseline, the left stick, which is still undecoded, and the paced console run that reaches its first frame and makes no frames, blocking the shell after every console test. Nothing about the picture settings or the clock needs further work.
+
+#### Files Modified:
+
+None.
+
+#### Status:
+
+- Build: PASS
+- Deployment: PASS
+- User Test: PASS
+
+---
