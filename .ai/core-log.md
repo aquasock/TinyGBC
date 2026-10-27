@@ -1151,3 +1151,33 @@ One board run settles it, and it should be a single launch of a plain `.gbc` wit
 - User Test: NOT RUN
 
 ---
+
+## 35 COMMIT Unreleased 2026-10-27T11:03:13-07:00
+
+#### Coming From:
+
+Unreleased ed4718f
+
+#### Purpose:
+
+Deploy entry 34's player and record what the board does with it, since entry 33 left the launch broken and unresolved.
+
+#### Outcome:
+
+The launch works. The player deployed is 3,249,096 bytes with SHA-256 `427083b44bf9c0999f5b0f0845867008c112ca5cf9488692049887ab6a86381e`, and a console run with RetroRegen's test cartridge passed every step that used to kill it: `TinyGBC LOAD`, `TinyGBC RUN 40000000`, `TinyGBC SETTINGS WANT 4005dd40 00000018` answered with `ae350run: settings /tinygbc.ini, volume=20, clock not set, a=b, palette off, colour off`, the new `TinyGBC GB SETTINGS VOL=20`, the cartridge as `TinyGBC WANT 4007df20 00400008` and `TinyGBC RUN 4007df20`, then `TinyGBC GB LOADING ROM=65536 CGB=1` and `TinyGBC GB CORE=gambatte ROM=65536 CRC=f0ecb41f CGB=1 AV=160x144 FPS=59.7275 HZ=32768 START=29421`, and on past the point entry 33 saw it die: `TinyGBC GB STATE SLOT=51437`, the state request, `TinyGBC GB VOLUME=20`, `TinyGBC GB PADMAP=9,1,3,2,4,5,6,7` and `TinyGBC GB VIDEO PALETTE=Off COLOUR=Off`, with `/root/saves/last.log` recording the state request that a working launch makes. The cause was therefore the ordering entry 31 introduced: a twenty-four byte settings request landing on the tail of the cartridge's megabyte, which asking for the settings before the cartridge removed. One thing is not answered: a console run reaches its first frame and then produces no `F=` lines, so the paced frames do not advance there and that, not the launch, is what has been blocking the shell after these runs; whether a window launch renders is for the user to see, and the desktop core was reloaded and the frame-limited player deleted afterwards so the board is in its usual state with only `/root/ae350/tinygbc-play.elf` and the user's `/tinygbc.ini` changed by this cycle. The core-syntax audit re-read `.ai/core.md` and `.ai/core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `.ai/core.md` was not changed and entries 1 to 34 were not rewritten, and validated this entry as number 35 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and `None.` in Files Modified.
+
+#### Next Steps:
+
+The user launches a game from the TinyGBC window, which is the one test the console cannot make, and then judges the Video page: the six palettes on a monochrome cartridge, Accurate and Fast on a colour one, and the greyed row after a `.gbc` has been played and reselected. The console run producing no frames with pacing on is worth one look afterwards, since it makes every console test end in a blocked shell; the left stick, the silent clock and entry 29's Oracle of Seasons baseline stand as before.
+
+#### Files Modified:
+
+None.
+
+#### Status:
+
+- Build: PASS
+- Deployment: PASS
+- User Test: NOT RUN
+
+---
