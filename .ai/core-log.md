@@ -1027,3 +1027,37 @@ The left stick is still the one input not decoded, its bytes 0 and 1 moving in t
 - User Test: PASS
 
 ---
+
+## 31 COMMIT Unreleased 2026-10-27T09:35:53-07:00
+
+#### Coming From:
+
+Unreleased 0179ec9
+
+#### Purpose:
+
+Give the window's Video page real settings -- the palette a monochrome cartridge is drawn in and the colour correction a colour one gets -- with the default leaving the picture this project has measured unchanged.
+
+#### Outcome:
+
+Aspect was dropped rather than built: `TN_VIDEO_ASPECT` exists at `0x001c` but for this machine it only chooses the picture's width, five columns for 800x720 with square pixels or six for 960x720, and `video.sv`'s own header says five by five is the picture's own aspect, so there is no honest choice to offer. The two settings that do something cannot be fabric settings at all: the video unit's palette and emphasis stores have been dead since the picture began reading the frame buffer, and libgambatte's palette setters sit behind the core's own object, so gambatte's core options are the only door. `firmware/include/tinygbc_video.h` holds six palettes -- Off, Auto, DMG, Pocket, Light and the Color's brown -- three colour corrections -- Off, Accurate and Fast -- and `gb_video_option()`, which answers exactly four keys, `gambatte_gb_colorization`, `gambatte_gb_internal_palette`, `gambatte_gbc_color_correction` and its `_mode`, and declines everything else so the core keeps its own defaults for the boot ROM, the rumble and the rest; `gb_environment` now answers `RETRO_ENVIRONMENT_GET_VARIABLE` from it. `HostSettings` stayed twenty-four bytes: the six reserved bytes became four, with the palette and the colour correction taking the two that were freed, so the clock and the mapping kept their offsets and a launcher that still sends zeros leaves the core on its own defaults. Two things had to be true for the settings to arrive at all. The core reads its options once, inside `retro_load_game`, through `check_variables(true)`, and never asks whether they changed because `GET_VARIABLE_UPDATE` is answered false, so `receive_settings()` moved ahead of `retro_set_environment` and the load, immediately after the cartridge; nothing in the blob depends on the cartridge, so the move costs nothing but the order of two statements. And the default had to be measured rather than assumed: with no option answered, libretro leaves its `colorCorrection` at zero and calls `setColorCorrection` false, so the picture every checksum in `tests/gb_bench_expected.txt` was recorded against is the **uncorrected** one, and the core's own option table saying "GBC only" never applied here because nothing was serving options at all. `GB_VIDEO=0,2` on the PC reproduced the uCity baseline `VIDEO=aaddaa41` exactly, which is what settled it, so Off is the default in both settings and Accurate and any palette are opt-ins. The PC build gained `GB_VIDEO=<palette>,<colour>` for measuring the path without the board. On uCity, a colour cartridge, no `GB_VIDEO` and `GB_VIDEO=0,0` both give `VIDEO=aaddaa41 AUDIO=a36b5633`, Accurate gives `e921f6ea`, Fast gives `8b494967`, and every palette from Auto to GBC leaves the checksum at `aaddaa41` -- inert, as the core returns before reading the option, which is what the greyed row says in the window. On Super Mario Land, a monochrome cartridge taken from the card's library, the six palettes give six different pictures, `d8835ec1`, `f03280aa`, `a0e30d10`, `1f8d9199`, `bc6f6f8b` and `f34a9d93`. `tools/test_video_options.sh` builds `tests/video_options_tb.c` with the sanitizers, checks that every index names a value and that unknown keys and out-of-range indices are refused, and then holds every key and every value the mapping can return against the core's own source, asking the mapping itself for the values so a mistyped one fails: changing `GBC - Brown` to `GBC - Brownish` fails the run. The player built as 3,247,464 bytes with SHA-256 `d198c49e855d1794a555c506d1494373a0f8d32b8b74cb2d9a67566d770d69ef`; by the user's instruction nothing was deployed, so the board still runs the entry 30 firmware and no part of this cycle has been seen on hardware. README's launcher section describes the page, the four keys and the ordering. The core-syntax audit re-read `.ai/core.md` and `.ai/core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `.ai/core.md` was not changed and entries 1 to 30 were not rewritten, and validated this entry as number 31 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and only eligible paths in Files Modified.
+
+#### Next Steps:
+
+Nothing here has been on the board: the deployment is the next step when the user allows it, after which the six palettes and the three corrections are judged on a monitor rather than by checksum, and the palette row's greyed state can be seen for a colour cartridge. That state depends on the last launch having been the cartridge now selected, so a cartridge that has never run -- every `.zip`, which the deck cannot open to read the header -- shows the row enabled; the player's report is the only route to its type without unpacking it on the BL616. The left stick, entry 26's silent clock, entry 29's Oracle of Seasons baseline and the untried retry on the battery-save, clock and state requests all stand as before.
+
+#### Files Modified:
+
+- README.md
+- firmware/apps/gb_bench/main.cpp
+- firmware/include/tinygbc_video.h
+- tests/video_options_tb.c
+- tools/test_video_options.sh
+
+#### Status:
+
+- Build: PASS
+- Deployment: NOT RUN
+- User Test: NOT RUN
+
+---

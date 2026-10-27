@@ -183,8 +183,32 @@ Boy button in `pad_joypad[]` order, and because it is last a host that sends
 fewer bytes leaves the player on its default mapping rather than zeroing it: a
 launcher built before the mapping sends sixteen and a player built before the
 clock asks for two, and neither disturbs the other. It prints
-`TinyGBC GB VOLUME=<percent>` and `TinyGBC GB PADMAP=<eight indices>`. Its
-Video and Saves pages are placeholders until the player has something to set.
+`TinyGBC GB VOLUME=<percent>` and `TinyGBC GB PADMAP=<eight indices>`. The Saves
+page is still a placeholder until the player has something to set.
+
+Its Video page sets the picture's palette and its colour correction, kept under
+`[video]` of the same file. Neither is a fabric setting: the video unit's
+palette and emphasis stores have been dead since the picture began reading the
+frame buffer, and libgambatte's setters sit behind the core's own object, so
+the only door into them is the core options a frontend answers. The player
+answers four of those from `tinygbc_video.h` -- `gambatte_gb_colorization`,
+`gambatte_gb_internal_palette`, `gambatte_gbc_color_correction` and its `_mode`
+-- and declines the rest, so the core keeps its own defaults for the boot ROM,
+the rumble and everything else. The settings have to arrive **before** the core
+loads, because it reads its options once, in `retro_load_game`, and never asks
+whether they changed; the player therefore asks for them straight after the
+cartridge, ahead of `retro_set_environment`. The palette is a monochrome
+game's, `Off`, `Auto`, `DMG`, `Pocket`, `Light` or `GBC`, and it does nothing on
+a colour cartridge, which draws its own colours and for which the core returns
+before reading the option at all -- so the window greys that row when the
+cartridge it launched was a colour one. The colour correction is `Off`,
+`Accurate` or `Fast`, at the Color's LCD. `Off` is the default and it is also
+what an unanswered option has always meant here: libretro leaves its
+correction at zero when none is given, so every checksum this project recorded
+before the setting existed is the uncorrected picture, and `Accurate` is an
+opt-in that changes it. `tools/test_video_options.sh` holds every key and value
+the player can answer against the core's own source, and the PC build takes
+`GB_VIDEO=<palette>,<colour>` so both paths can be measured without the board.
 
 A cartridge with a battery keeps its save on the card, in TinyNES's protocol,
 which TinyTang's `ae350run` answers for either product name. Once the game has

@@ -70,6 +70,7 @@
 
 #include "libretro.h"
 #include "tinygbc_pad.h"
+#include "tinygbc_video.h"
 
 /* The mapping's table of Game Boy buttons is the core's own order, spelled out
  * in the header so a host test can use it without the core. */
@@ -434,24 +435,28 @@ void audio_resample(const int16_t *data, size_t frames)
 
 /* What the host fills, in one headerless blob: the master volume in percent
  * and the mute, from /tinygbc.ini, the host's clock in seconds since 1970
- * UTC, 0 when it has none, and last the button mapping, one index into
- * pad_source[] for each of the Game Boy's buttons in pad_joypad[] order. These
- * bytes are the ABI with the host (TinyTang ports/bl616/tang_fpga_uart.c), so
- * the two sides change together, and the program asks for sizeof this. What is
+ * UTC, 0 when it has none, the button mapping (one index into pad_source[] for
+ * each of the Game Boy's buttons in pad_joypad[] order) and last the picture's
+ * palette and colour correction as tinygbc_video.h numbers them. These bytes
+ * are the ABI with the host (TinyTang ports/bl616/tang_fpga_uart.c), so the
+ * two sides change together, and the program asks for sizeof this. What is
  * here is what it keeps when the host says nothing or answers with fewer bytes
- * than that, which is why the mapping is last: a host built before it sends
- * the sixteen bytes it always did and leaves the mapping at its default. */
-#if defined(GB_CART) || defined(GB_PAD_OUT)
+ * than that, which is why each addition has gone after the last: the two
+ * picture bytes took two of the six that were reserved, so a host built before
+ * them still sends this many bytes and leaves them zero, which is the core's
+ * own default in both cases. */
 struct HostSettings {
 	uint8_t volume;
 	uint8_t mute;
-	uint8_t reserved[6];
+	uint8_t reserved[4];
+	uint8_t palette;   /* GB_PAL_* */
+	uint8_t colour;    /* GB_COLOUR_* */
 	int64_t utc;
 	uint8_t pad_map[8];
 };
 static_assert(sizeof(HostSettings) == 24, "the settings blob is 24 bytes");
-HostSettings host_settings = { 100, 0, {}, 0, PAD_DEFAULT_MAP };
-#endif
+HostSettings host_settings = { 100, 0, {}, GB_PAL_OFF, GB_COLOUR_OFF, 0,
+			       PAD_DEFAULT_MAP };
 
 #ifdef GB_CART
 /* The launcher sends the cartridge after this program asks for it: the boot
@@ -1019,6 +1024,20 @@ bool gb_environment(unsigned cmd, void *data)
 	case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE:
 		*static_cast<bool *>(data) = false;
 		return true;
+	case RETRO_ENVIRONMENT_GET_VARIABLE: {
+		/* The picture's settings reach gambatte as core options, because
+		 * that is the only door into its palettes from here
+		 * (tinygbc_video.h). Only the four keys answered there are
+		 * recognised; the rest are declined, so the core keeps its own
+		 * defaults for the boot ROM, the rumble and everything else. */
+		auto *var = static_cast<struct retro_variable *>(data);
+
+		if (!var)
+			return false;
+		var->value = gb_video_option(var->key, host_settings.palette,
+					     host_settings.colour);
+		return var->value != nullptr;
+	}
 	case RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL:
 	case RETRO_ENVIRONMENT_SET_MEMORY_MAPS:
 	case RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS:
@@ -1271,6 +1290,19 @@ int main()
 	crc_init();
 #ifndef __riscv
 	dump_dir = getenv("GB_DUMP");
+	/* GB_VIDEO=<palette>,<colour> stands in for the host's settings on the PC,
+	 * in the numbers tinygbc_video.h uses, so that the option path can be
+	 * measured off the board: the core reads these while it loads, and they
+	 * change the picture the checksums fold. */
+	if (const char *v = getenv("GB_VIDEO")) {
+		unsigned pal = 0, col = 0;
+
+		if (sscanf(v, "%u,%u", &pal, &col) == 2 && pal < GB_PAL_COUNT &&
+		    col < GB_COLOUR_COUNT) {
+			host_settings.palette = (uint8_t)pal;
+			host_settings.colour = (uint8_t)col;
+		}
+	}
 #endif
 	if (!parse_input(GB_INPUT)) {
 		printf("TinyGBC GB BAD INPUT\n");
@@ -1292,6 +1324,15 @@ int main()
 	const uint32_t rom_crc = crc_update(0, gb_rom, rom_size);
 	const unsigned cgb = rom_size > 0x143 ? (gb_rom[0x143] >> 7) & 1u : 0u;
 	const uint8_t *cart = gb_rom;
+#endif
+
+#ifdef GB_CART
+	/* The settings come before the core loads, because the core reads its
+	 * options while loading and never asks whether they changed: the palette
+	 * and the colour correction are decided there, not per frame. Nothing in
+	 * the blob depends on the cartridge, so asking this early costs nothing
+	 * but the order of two lines. */
+	receive_settings();
 #endif
 
 	uint64_t t0 = ticks();
@@ -1365,7 +1406,6 @@ int main()
 	printf("TinyGBC GB STATE SLOT=%u\n", quick_ok ? (unsigned)quick.size : 0u);
 	if (quick_ok)
 		receive_state(quick, rom_crc);
-	receive_settings();
 #ifdef GB_AUDIO_OUT
 	audio_gain = tn_volume_gain(host_settings.volume, host_settings.mute);
 #endif
@@ -1380,6 +1420,18 @@ int main()
 	       host_settings.pad_map[4], host_settings.pad_map[5],
 	       host_settings.pad_map[6], host_settings.pad_map[7]);
 #endif
+	/* The two picture settings the core was given before it loaded. */
+	{
+		const unsigned pal = host_settings.palette < GB_PAL_COUNT
+					 ? (unsigned)host_settings.palette
+					 : (unsigned)GB_PAL_OFF;
+		const unsigned col = host_settings.colour < GB_COLOUR_COUNT
+					 ? (unsigned)host_settings.colour
+					 : (unsigned)GB_COLOUR_ACCURATE;
+
+		printf("TinyGBC GB VIDEO PALETTE=%s COLOUR=%s\n",
+		       gb_palette_names[pal], gb_colour_names[col]);
+	}
 	/* The date, when the host's clock has one: time() runs on from it, so an
 	 * MBC3 or HuC3 cartridge's clock counts real time, the time the board was
 	 * off included, and its .rtc means the same thing in every session.
