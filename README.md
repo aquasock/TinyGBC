@@ -86,7 +86,13 @@ read. The controller's own buttons, measured from its reports rather than taken
 from a table: byte 4 carries R, Plus, Home, Minus, L, Down and Right in bits 1
 to 7, byte 5 carries Up, Left, ZR, X, A, Y, B and ZL in bits 0 to 7, all active
 low. A is the Game Boy's A, B its B, Plus Start, Minus Select, and the d-pad the
-d-pad.
+d-pad. That mapping is only the default: the window's Input page, or the
+`[input]` section of `/tinygbc.ini`, can point any Game Boy button at any of
+the controller's fourteen measured buttons, and `tools/test_pad_map.sh` checks
+the decode on the PC (`firmware/include/tinygbc_pad.h`). HOME is deliberately
+not one of them: a tap of it belongs to the desk layer, so a game button bound
+to it would bring the desktop up with every press, and the combos below read
+the pad directly rather than through the mapping.
 
 Each bus selects data format 3 (`0x03` to `0xfe`) after waking a controller,
 reads eight bytes and packs them into format 1's six, so the registers and the
@@ -165,14 +171,20 @@ tree's: the Library page lists the card's `.gbc`, `.gb` and `.zip` files from
 `/root/media/gb`, and launching one loads the core, sends the cartridge as the
 file the player asks for, and puts the desktop core back when the game exits.
 Its Audio page sets one master volume and a mute for HDMI and the I2S2
-together, kept in TinyTang's `/tinygbc.ini`: after the cartridge the player
+together, and its Input page sets which controller button answers to each Game
+Boy button; both are kept in TinyTang's `/tinygbc.ini`, under `[audio]` and
+`[input]`, and both reach the player the same way: after the cartridge it
 prints `TinyGBC SETTINGS WANT <address> <bytes>`, takes the volume in percent
 and the mute straight into its `HostSettings`, and scales every resampled pair
 by `tn_volume_gain` (`firmware/include/tinygbc.h`), a gain out of 256 that is
-the square of the percentage's fraction and exactly 256 at 100 percent; a host
-that sends nothing leaves full volume. It prints `TinyGBC GB VOLUME=<percent>`.
-Its Input, Video and Saves pages are placeholders until the player has
-something to set.
+the square of the percentage's fraction and exactly 256 at 100 percent. The
+mapping is the blob's last eight bytes, one index into `pad_source[]` per Game
+Boy button in `pad_joypad[]` order, and because it is last a host that sends
+fewer bytes leaves the player on its default mapping rather than zeroing it: a
+launcher built before the mapping sends sixteen and a player built before the
+clock asks for two, and neither disturbs the other. It prints
+`TinyGBC GB VOLUME=<percent>` and `TinyGBC GB PADMAP=<eight indices>`. Its
+Video and Saves pages are placeholders until the player has something to set.
 
 A cartridge with a battery keeps its save on the card, in TinyNES's protocol,
 which TinyTang's `ae350run` answers for either product name. Once the game has

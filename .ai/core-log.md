@@ -993,3 +993,37 @@ None.
 - User Test: N/A
 
 ---
+
+## 30 COMMIT Unreleased 2026-10-27T09:00:29-07:00
+
+#### Coming From:
+
+Unreleased dc7880d
+
+#### Purpose:
+
+Let a controller's buttons be rearranged from the desk window, built the way TinyNES does it, so the Game Boy's buttons can be rebound without rebuilding the player.
+
+#### Outcome:
+
+The mapping is a table the host fills and the player applies, and the decode moved into a header so a test can reach it. `firmware/include/tinygbc_pad.h` holds the Classic Controller's fifteen measured buttons as one word in the order entry 13 measured them, the fourteen sources a Game Boy button may answer to in the order `/tinygbc.ini` lists them, and a pure `pad_decode(b4, b5, map)` that `pad_poll()` now calls in place of its fixed `if` chain; `main.cpp` asserts with `static_assert` that the joypad positions in the header still match the core's `RETRO_DEVICE_ID_JOYPAD_*`. HOME is not a source: a tap of it belongs to the desk layer, so a game button bound to it would raise the desktop on every press, and the machine's own combos (HOME with MINUS to quit, with L or R to save or load a state) still read the raw pad rather than the mapping. `HostSettings` grew from sixteen bytes to twenty-four with `pad_map[8]` appended last, one index per button in `pad_joypad[]` order, so a launcher built before the mapping sends the sixteen bytes it always did and leaves the mapping at its compiled default instead of zeroing it; the defaults reproduce the old decode exactly, which is why the two working baselines did not move, `VIDEO=aaddaa41 AUDIO=a36b5633 SAMPLES=987948` and `TinyGBC GB DISPLAY FB=d6e86438`. `tools/test_pad_map.sh` builds `tests/pad_map_tb.c` with the address and undefined-behaviour sanitizers and passes: the default map decodes all 65,536 combinations of the report's two bytes identically to the old fixed decode, all fourteen sources reach all eight buttons and nothing else, an index past the table yields no button, one source can answer to two buttons, the table has no duplicates, HOME is absent, and the three measured bit positions used as witnesses land where WII-003 put them. The check is known to bite: swapping A and B in the default map fails it on the first combination. TinyTang's half, in that repository's own log, is an `[input]` section of one `<button> = <controller>` key each in `/tinygbc.ini`, a `pad_map[]` in its settings struct, a `TinyGBC SETTINGS WANT` reply of twenty-four bytes still cut to what the player asked for, and a real Input page in place of the placeholder, modelled on TinyNES's: eight rows, a Change that steps the highlighted row to the next controller button, Restore that resets the mapping alone so the volume is untouched, and a Save that rewrites only `[input]` and `[audio]` and keeps every other byte of the file. The firmware went to the board as `0f896ca-dirty.ad50850` after one earlier build, and the player as 3,244,664 bytes with SHA-256 `40bde651750768c988aa66916cca15d99aa1fa75d293826ed66a8db5bd0a6551`; the player asked for `00000018` bytes, the reply was `ae350run: settings /tinygbc.ini, volume=20, clock not set, a=x` and the player reported `TinyGBC GB PADMAP=1,8,3,2,4,5,6,7`, so A answered to X. The user then rebound B to Y and A to B from the Input page and passed the cycle; read back with the shell's `cat`, `/tinygbc.ini` holds `b = y`, `a = b`, the four directions and `select`/`start` unchanged, `volume = 20` as it was, and the comment line above them, so Save rewrote its two sections and left the rest. Three faults were found and two were fixed. The first build's Input page drew no rows at all, because `td_list` draws nothing until `td_list_set_count()` is called and the page never called it, as TinyNES's does; the fix adds the count, and a second flash was needed. More seriously, one launch in five came up with the default mapping and the volume at 100 without saying so, and the console showed why, `TinTinyGBC SETTINGS WANT` and `TinyGBCDLINES`, the head of the request line lost on the AE350-to-BL616 wire. This project already documents that fault and has `save_pace()` for it, "the first bytes after a quiet spell are where it loses some" from TinyNES on 2026-10-14, but only the save-send path ever called it; every request the player makes now settles the line first, and the settings request is asked again if no answer lands, which is safe because a host that never saw the request is idle and a host that answered is never asked twice. Three consecutive launches then read back `PADMAP=9,1,3,2,4,5,6,7` and `VOLUME=20`, against roughly one failure in five before, and two further runs were abandoned when the board was needed elsewhere, so the fix is measured and not exhausted. The board then left the USB bus during the cleanup, with the player and the firmware deployed and the desktop core not yet reloaded, so the last thing the FPGA was given may still be the TinyGBC core. The core-syntax audit re-read `.ai/core.md` and `.ai/core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `.ai/core.md` was not changed and entries 1 to 29 were not rewritten, and validated this entry as number 30 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and only eligible paths in Files Modified.
+
+#### Next Steps:
+
+The left stick is still the one input not decoded, its bytes 0 and 1 moving in the pad trace with no axis mapped or deadzoned, and it would join the mapping as four more sources. The same loss that took the settings line can take any request: the battery save, the clock and the state file are settled before they ask but not retried, so a lost line there means a game that silently starts without its save, which is the next thing to close in that path. Entry 26's silent clock on a launch after a replug, entry 29's Oracle of Seasons baseline, and the Video page stand unchanged.
+
+#### Files Modified:
+
+- README.md
+- firmware/apps/gb_bench/main.cpp
+- firmware/include/tinygbc_pad.h
+- tests/pad_map_tb.c
+- tools/test_pad_map.sh
+
+#### Status:
+
+- Build: PASS
+- Deployment: PASS
+- User Test: PASS
+
+---

@@ -69,6 +69,18 @@
 #endif
 
 #include "libretro.h"
+#include "tinygbc_pad.h"
+
+/* The mapping's table of Game Boy buttons is the core's own order, spelled out
+ * in the header so a host test can use it without the core. */
+static_assert(PAD_JOY_B == RETRO_DEVICE_ID_JOYPAD_B, "B is a joypad bit");
+static_assert(PAD_JOY_A == RETRO_DEVICE_ID_JOYPAD_A, "A is a joypad bit");
+static_assert(PAD_JOY_SELECT == RETRO_DEVICE_ID_JOYPAD_SELECT, "Select is a joypad bit");
+static_assert(PAD_JOY_START == RETRO_DEVICE_ID_JOYPAD_START, "Start is a joypad bit");
+static_assert(PAD_JOY_UP == RETRO_DEVICE_ID_JOYPAD_UP, "Up is a joypad bit");
+static_assert(PAD_JOY_DOWN == RETRO_DEVICE_ID_JOYPAD_DOWN, "Down is a joypad bit");
+static_assert(PAD_JOY_LEFT == RETRO_DEVICE_ID_JOYPAD_LEFT, "Left is a joypad bit");
+static_assert(PAD_JOY_RIGHT == RETRO_DEVICE_ID_JOYPAD_RIGHT, "Right is a joypad bit");
 
 extern "C" const unsigned char gb_rom[], gb_rom_end[];
 extern "C" const unsigned char gb_state[], gb_state_end[];
@@ -420,6 +432,27 @@ void audio_resample(const int16_t *data, size_t frames)
 }
 #endif
 
+/* What the host fills, in one headerless blob: the master volume in percent
+ * and the mute, from /tinygbc.ini, the host's clock in seconds since 1970
+ * UTC, 0 when it has none, and last the button mapping, one index into
+ * pad_source[] for each of the Game Boy's buttons in pad_joypad[] order. These
+ * bytes are the ABI with the host (TinyTang ports/bl616/tang_fpga_uart.c), so
+ * the two sides change together, and the program asks for sizeof this. What is
+ * here is what it keeps when the host says nothing or answers with fewer bytes
+ * than that, which is why the mapping is last: a host built before it sends
+ * the sixteen bytes it always did and leaves the mapping at its default. */
+#if defined(GB_CART) || defined(GB_PAD_OUT)
+struct HostSettings {
+	uint8_t volume;
+	uint8_t mute;
+	uint8_t reserved[6];
+	int64_t utc;
+	uint8_t pad_map[8];
+};
+static_assert(sizeof(HostSettings) == 24, "the settings blob is 24 bytes");
+HostSettings host_settings = { 100, 0, {}, 0, PAD_DEFAULT_MAP };
+#endif
+
 #ifdef GB_CART
 /* The launcher sends the cartridge after this program asks for it: the boot
  * ROM's loader, compiled in here, receives it into the heap as the TNR1 image
@@ -475,36 +508,31 @@ const uint8_t *receive_cart(size_t &size)
 	return buffer + 8;
 }
 
-/* What the host fills, in one headerless blob: the master volume in percent
- * and the mute, from /tinygbc.ini, and the host's clock in seconds since 1970
- * UTC, 0 when it has none. These bytes are the ABI with the host (TinyTang
- * ports/bl616/tang_fpga_uart.c), so the two sides change together, and the
- * program asks for sizeof this. What is here is what it keeps when the host
- * says nothing or sends fewer bytes, as one built before the clock was added
- * does: full volume, not muted, and no date. */
-struct HostSettings {
-	uint8_t volume;
-	uint8_t mute;
-	uint8_t reserved[6];
-	int64_t utc;
-};
-static_assert(sizeof(HostSettings) == 16, "the settings blob is 16 bytes");
-HostSettings host_settings = { 100, 0, {}, 0 };
+/* Defined with the card-file requests below; every request in this program
+ * settles the line before it speaks. */
+void save_pace();
 
 /* Ask the host for the settings, as TinyNES's player does: the answer lands
- * directly in host_settings in the loader's protocol, and nothing arriving
- * within a second leaves the defaults. */
+ * directly in host_settings in the loader's protocol. Settling the line first,
+ * and asking again when nothing came, covers the request line being lost: a
+ * host that never saw it stays idle, so the second request reaches it while
+ * nothing else is in flight, and a host that did answer is never asked twice. */
 void receive_settings()
 {
-	printf("TinyGBC SETTINGS WANT %08lx %08lx\n",
-	       (unsigned long)(uintptr_t)&host_settings,
-	       (unsigned long)sizeof host_settings);
-	fflush(stdout);
-	tn_load_reset();
-	uint32_t got = 0;
+	for (int attempt = 0; attempt < 2; attempt++) {
+		uint32_t got = 0;
 
-	for (int step = 0; step < 10 && !got; step++)
-		got = tn_load_poll(TN_CORE_HZ / 10);
+		save_pace();
+		printf("TinyGBC SETTINGS WANT %08lx %08lx\n",
+		       (unsigned long)(uintptr_t)&host_settings,
+		       (unsigned long)sizeof host_settings);
+		fflush(stdout);
+		tn_load_reset();
+		for (int step = 0; step < 10 && !got; step++)
+			got = tn_load_poll(TN_CORE_HZ / 10);
+		if (got == (uintptr_t)&host_settings)
+			return;
+	}
 }
 #endif
 
@@ -538,6 +566,22 @@ CardFile sram = { "NVRAM" };
 [[maybe_unused]] CardFile rtc = { "RTC" };
 
 #ifdef GB_CART
+/* Let the link's line out and leave it quiet a moment: the first bytes after a
+ * quiet spell are where it loses some (TinyNES, 2026-10-14), and the card's
+ * writes at the far end hold off the UART while they run. Every request this
+ * program makes costs one of these, which is four milliseconds and buys the
+ * line arriving whole: without it the opening burst lost the head of the
+ * settings line and the player kept its defaults in silence (core-log entry
+ * 30). */
+void save_pace()
+{
+	tn_wait_tx_idle();
+	const uint64_t until = ticks() + tick_hz / 250;
+
+	while (ticks() < until)
+		;
+}
+
 /* Ask the host for the cartridge's file and take it straight into the core's
  * buffer, in the boot ROM's load protocol, as TinyNES's player does and with
  * the lines TinyTang's ae350run answers for either product name (files under
@@ -548,6 +592,7 @@ bool receive_file(const CardFile &file)
 {
 	if (!file.buf || !file.len)
 		return false;
+	save_pace();
 	printf("TinyGBC %s WANT %08lx %08lx\n", file.channel,
 	       (unsigned long)(uintptr_t)file.buf, (unsigned long)file.len);
 	fflush(stdout);
@@ -565,18 +610,6 @@ bool receive_file(const CardFile &file)
 	       file.blank() ? " BLANK" : "");
 	fflush(stdout);
 	return true;
-}
-
-/* Let the link's line out and leave it quiet a moment: the first bytes after a
- * quiet spell are where it loses some (TinyNES, 2026-10-14), and the card's
- * writes at the far end hold off the UART while they run. */
-void save_pace()
-{
-	tn_wait_tx_idle();
-	const uint64_t until = ticks() + tick_hz / 250;
-
-	while (ticks() < until)
-		;
 }
 
 /* Give the file back as text, in TinyNES's form: link mode frames lines and
@@ -849,27 +882,10 @@ uint32_t pad_last_data, pad_last_data2;
 bool pad_last_valid;
 #endif
 
-/* This controller's real layout, measured from its own reports rather than
- * taken from WiiBrew's table, which did not match it (core-log entry 13): the
- * trace of one press per button gave the bits below. Both bytes are active
- * low, byte 4 in DATA2 bits 7:0 and byte 5 in bits 15:8. */
-enum {
-	PAD_B4_R = 1u << 1,
-	PAD_B4_PLUS = 1u << 2,
-	PAD_B4_HOME = 1u << 3,
-	PAD_B4_MINUS = 1u << 4,
-	PAD_B4_L = 1u << 5,
-	PAD_B4_DOWN = 1u << 6,
-	PAD_B4_RIGHT = 1u << 7,
-	PAD_B5_UP = 1u << 0,
-	PAD_B5_LEFT = 1u << 1,
-	PAD_B5_ZR = 1u << 2,
-	PAD_B5_X = 1u << 3,
-	PAD_B5_A = 1u << 4,
-	PAD_B5_Y = 1u << 5,
-	PAD_B5_B = 1u << 6,
-	PAD_B5_ZL = 1u << 7,
-};
+/* This controller's real layout is measured from its own reports rather than
+ * taken from WiiBrew's table, which did not match it (core-log entry 13), and
+ * is now the word in tinygbc_pad.h, where the test can reach it. Both report
+ * bytes are active low, byte 4 in DATA2 bits 7:0 and byte 5 in bits 15:8. */
 
 void pad_poll(void)
 {
@@ -898,22 +914,10 @@ void pad_poll(void)
 	const unsigned b4 = ~pad_data2 & 0xffu;
 	const unsigned b5 = (~pad_data2 >> 8) & 0xffu;
 
-	if (b5 & PAD_B5_A)
-		pad_bits |= 1u << RETRO_DEVICE_ID_JOYPAD_A;
-	if (b5 & PAD_B5_B)
-		pad_bits |= 1u << RETRO_DEVICE_ID_JOYPAD_B;
-	if (b4 & PAD_B4_PLUS)
-		pad_bits |= 1u << RETRO_DEVICE_ID_JOYPAD_START;
-	if (b4 & PAD_B4_MINUS)
-		pad_bits |= 1u << RETRO_DEVICE_ID_JOYPAD_SELECT;
-	if (b5 & PAD_B5_UP)
-		pad_bits |= 1u << RETRO_DEVICE_ID_JOYPAD_UP;
-	if (b4 & PAD_B4_DOWN)
-		pad_bits |= 1u << RETRO_DEVICE_ID_JOYPAD_DOWN;
-	if (b5 & PAD_B5_LEFT)
-		pad_bits |= 1u << RETRO_DEVICE_ID_JOYPAD_LEFT;
-	if (b4 & PAD_B4_RIGHT)
-		pad_bits |= 1u << RETRO_DEVICE_ID_JOYPAD_RIGHT;
+	/* Through the map the host sent: which controller button answers to each
+	 * Game Boy button. A mapping built without a host is PAD_DEFAULT_MAP, the
+	 * fixed decode the player had before the map existed. */
+	pad_bits = pad_decode(b4, b5, host_settings.pad_map);
 #ifdef GB_CART
 	/* The desktop is over the game: its pointer has the controller. */
 	if (TN_LINK_STATUS & TN_LINK_SHOWN)
@@ -924,22 +928,22 @@ void pad_poll(void)
 /* HOME and MINUS together end a run built with FRAMES=0. */
 bool pad_quit(void)
 {
-	const unsigned b4 = ~pad_data2 & 0xffu;
+	const unsigned held = pad_held(~pad_data2 & 0xffu, (~pad_data2 >> 8) & 0xffu);
 
-	return pad_ready && (b4 & PAD_B4_HOME) && (b4 & PAD_B4_MINUS);
+	return pad_ready && (held & (PAD_HOME | PAD_MINUS)) == (PAD_HOME | PAD_MINUS);
 }
 
 #ifdef GB_CART
-/* L or R held with HOME, as PAD_B4_L and PAD_B4_R: L saves the state and R
- * loads it. Neither is a tap of HOME (desk_link.sv), so TinyDesk is not
- * brought up by them. */
+/* L or R held with HOME: L saves the state and R loads it. Neither is a tap
+ * of HOME (desk_link.sv), so TinyDesk is not brought up by them, and neither
+ * goes through the mapping, which is the game's buttons and not the machine's. */
 unsigned pad_combo(void)
 {
-	const unsigned b4 = ~pad_data2 & 0xffu;
+	const unsigned held = pad_held(~pad_data2 & 0xffu, (~pad_data2 >> 8) & 0xffu);
 
-	if (!pad_ready || !(b4 & PAD_B4_HOME))
+	if (!pad_ready || !(held & PAD_HOME))
 		return 0;
-	return b4 & (PAD_B4_L | PAD_B4_R);
+	return held & (PAD_L | PAD_R);
 }
 #endif
 #endif
@@ -1367,6 +1371,15 @@ int main()
 #endif
 	printf("TinyGBC GB VOLUME=%u%s\n", (unsigned)host_settings.volume,
 	       host_settings.mute ? " MUTED" : "");
+#ifdef GB_PAD_OUT
+	/* What each Game Boy button answers to, as indices into pad_source[], so
+	 * the console shows whether the host's mapping arrived. */
+	printf("TinyGBC GB PADMAP=%u,%u,%u,%u,%u,%u,%u,%u\n",
+	       host_settings.pad_map[0], host_settings.pad_map[1],
+	       host_settings.pad_map[2], host_settings.pad_map[3],
+	       host_settings.pad_map[4], host_settings.pad_map[5],
+	       host_settings.pad_map[6], host_settings.pad_map[7]);
+#endif
 	/* The date, when the host's clock has one: time() runs on from it, so an
 	 * MBC3 or HuC3 cartridge's clock counts real time, the time the board was
 	 * off included, and its .rtc means the same thing in every session.
@@ -1516,7 +1529,7 @@ int main()
 			if (pressed && quick_ok && !(TN_LINK_STATUS & TN_LINK_SHOWN)) {
 				const uint64_t t0 = ticks();
 
-				if (pressed & PAD_B4_L) {
+				if (pressed & PAD_L) {
 					const bool ok = state_save(quick, rom_crc, f);
 
 					state_say(state_tx, "TinyGBC GB STATE SAVE %s F=%u US=%llu",
