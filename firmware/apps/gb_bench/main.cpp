@@ -1475,6 +1475,13 @@ int main()
 	}
 	printf("TinyGBC GB DATE=%lld RTC=%u\n", (long long)host_settings.utc,
 	       (unsigned)rtc.len);
+	if (host_settings.utc <= 0) {
+		/* No date from the host: the cartridge's clock cannot be kept, and
+		 * saying so is the point. It used to be silent, so a game with a
+		 * clock played as though its clock worked and forgot it at exit
+		 * (core-log entry 37). */
+		printf("TinyGBC GB RTC UNKEPT NO-DATE\n");
+	}
 	/* Link mode last: from here this program's text goes out as TinyDesk
 	 * frames, the desk layer can sit over the picture, and the launcher that
 	 * started us knows the game is up. */

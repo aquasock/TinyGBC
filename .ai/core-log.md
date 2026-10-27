@@ -1211,3 +1211,33 @@ None.
 - User Test: PASS
 
 ---
+
+## 37 COMMIT Unreleased 2026-10-27T12:06:58-07:00
+
+#### Coming From:
+
+Unreleased 5c6c6b5
+
+#### Purpose:
+
+Stop the player from keeping a cartridge's clock in silence when the host has no date to keep it against.
+
+#### Outcome:
+
+A cartridge with a clock -- Pokemon Gold, Silver and Crystal, Harvest Moon, Robopon and a few more -- is kept against the date the host sends, and without that date the player has always done nothing at all: no `tn_rt_set_date`, no `.rtc` read and no `.rtc` write, with `TinyGBC GB DATE=0 RTC=0` the only trace and that on a console nobody reads. It now says so, `TinyGBC GB RTC UNKEPT NO-DATE`, printed whenever the host sends no date, so a session that cannot keep a clock names itself. Nothing else changes: with a date the behaviour is exactly what it was, and the recorded baselines did not move, `VIDEO=aaddaa41 AUDIO=a36b5633` over 1,800 frames. The player built as 3,249,256 bytes with SHA-256 `62f475c934f2958db6c1b44d3975c79e607a081b971cc11c06c8c19034c684e0`, and the host build compiles clean under `-Wall -Wextra -Werror`; `tools/test_pad_map.sh` and `tools/test_video_options.sh` still pass. The other half of the fix is TinyTang's: the board's clock is read while the desktop core still owns the I2C bus, at window open and again in the launch before the core is swapped, and the window says when it has no date, which is that repository's entry. Nothing was deployed, because the board is in use. The core-syntax audit re-read `.ai/core.md` and `.ai/core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `.ai/core.md` was not changed and entries 1 to 36 were not rewritten, and validated this entry as number 37 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and only eligible path in Files Modified.
+
+#### Next Steps:
+
+Deploy the pair when the board is free and then test the case that failed: power-cycle, open the TinyGBC window, and read the Saves page's new line -- with the RTC reachable it should say the clock is set, and a clock cartridge's `.rtc` should then be written at exit where before nothing was. If it says not set, the reason word on that line says whether the RTC is absent or holds no date, which are different faults on the hardware side and neither is this player's. Entry 29's Oracle of Seasons baseline, the left stick and the paced console run that makes no frames all stand.
+
+#### Files Modified:
+
+- firmware/apps/gb_bench/main.cpp
+
+#### Status:
+
+- Build: PASS
+- Deployment: NOT RUN
+- User Test: NOT RUN
+
+---
