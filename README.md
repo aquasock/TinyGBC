@@ -60,7 +60,11 @@ slower than the DAC's clock; `FIX` counts those pairs, `DROPS` and `UNDERRUNS`
 are the unit's own counters, and `US` is what resampling costs per emulated
 frame. The core's `AUDIO` checksum is untouched, so the PC and AE350 still
 compare. An unpaced run produces sound three times too fast for the DAC and
-will drop by design.
+will drop by design. The sound is mixed to mono before resampling, (L + R) / 2
+to both sides, as TinyNES's is: a sound the game pans to one side is heard on
+both rather than on that side alone, at half its level when it is panned hard.
+The I2S unit and HDMI still carry two channels, so stereo remains a player
+change.
 
 `make PAD=1` reads a Wii Classic Controller and plays with it. The fabric
 polls the pad and the harness answers gambatte's input from it, falling back to

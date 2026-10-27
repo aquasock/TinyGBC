@@ -900,3 +900,34 @@ The one recorded launch found the board's clock unset after a replug, so the pla
 - User Test: PASS
 
 ---
+
+## 27 COMMIT Unreleased 2026-10-27T00:40:34-07:00
+
+#### Coming From:
+
+Unreleased 42ee84b
+
+#### Purpose:
+
+Mix the Game Boy's stereo sound to mono, as the user chose, so a sound the game pans to one side is heard on both rather than only on that side.
+
+#### Outcome:
+
+The user reported the sound as only the left channel, on HDMI and, they believed, on the Pmod I2S2, and recalled that the port had kept one channel to stay simple. The path was traced and measured before anything changed: over 3,000 frames of Oracle of Seasons, uCity 1.3, Jayro's Test Cart v3.0.1 and RetroRegen GBC Test v0.1.6, a scratch harness linked against the PC build's gambatte objects found the two channels at equal RMS levels with a correlation of 1.0000, so gambatte produces stereo; the player packed left into bits 31:16 of `TN_AUDIO_DATA` and right into 15:0, `i2s_out.sv` sends 31:16 with LRCK low and 15:0 with it high, `hdmi_silent.sv` maps them to words 0 and 1, and both files are byte-identical to TinyNES's, whose player writes the same sample to both halves and is heard on both sides, so the right channel's path works and what reached one side only was sound the game panned there. The user chose a mono mix over stereo for now. In `firmware/apps/gb_bench/main.cpp` the resampler takes (L + R) / 2 from each of gambatte's pairs, keeps one previous and one current sample instead of two of each, and writes the volume-scaled result to both halves of every FIFO word, including the level top-up's repeated pair. The average cannot clip, and a sound panned hard to one side comes out at half its level. The core's own `AUDIO` checksum is taken before the mix, so the uCity default run still ends `VIDEO=aaddaa41 AUDIO=a36b5633`. The player was built clean and deployed as entry 26's `f23f385db2bc31be7d752afeb77f9ae04b9464fea13d8e762ce0e605cda70f51`, and the user played Pokemon Gold with it in entry 26's test, but did not report on the mix itself, so the user test is not claimed. README states the mix. The core-syntax audit re-read `.ai/core.md` and `.ai/core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `.ai/core.md` was not changed and entries 1 to 26 were not rewritten, and validated this entry as number 27 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and only eligible paths in Files Modified.
+
+#### Next Steps:
+
+The user should confirm in RetroRegen GBC Test's Sound Test that the left, right and both tones all come out of both sides, on HDMI and the I2S2. Stereo would be a player change only, since the fabric already carries two channels. Entry 26's next steps stand, frame pacing first.
+
+#### Files Modified:
+
+- README.md
+- firmware/apps/gb_bench/main.cpp
+
+#### Status:
+
+- Build: PASS
+- Deployment: PASS
+- User Test: NOT RUN
+
+---

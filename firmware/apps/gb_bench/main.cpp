@@ -322,17 +322,24 @@ enum { DISPLAY_MAX_W = 160 };
  * to the sink's. 32,768 / 48,828.125 is exactly 0.67108864 input samples per
  * output sample, which a Q32 phase step holds without drift, and each output
  * sample is interpolated linearly between the two input samples either side of
- * it. A write to a full FIFO is dropped and counted by the unit itself. */
+ * it. A write to a full FIFO is dropped and counted by the unit itself.
+ *
+ * The sound is mixed to mono first, (L + R) / 2, and the same sample goes to
+ * both sides, as TinyNES's does: a sound the game pans to one side is heard on
+ * both rather than on that side alone. The average cannot clip, and a sound
+ * panned hard to one side comes out at half its level, the usual cost of a
+ * downmix. Stereo is a later choice, and the I2S unit and HDMI already carry
+ * two channels. */
 const uint64_t AUDIO_STEP_Q32 = 2882303762ull; /* 0.67108864 * 2^32, rounded */
 const uint64_t AUDIO_ONE_Q32 = 1ull << 32;
 
-int16_t rs_prev_l, rs_prev_r, rs_cur_l, rs_cur_r;
+int16_t rs_prev, rs_cur;
 uint64_t rs_pos;
 bool rs_primed;
 uint64_t audio_us;
 unsigned audio_pairs;
 /* The last pair emitted, for the level top-up below. */
-int16_t audio_last_l, audio_last_r;
+int16_t audio_last;
 /* The master volume's gain (tn_volume_gain), which every pair is scaled by
  * before the FIFO; unity until the host says otherwise. */
 uint32_t audio_gain = TN_VOLUME_UNITY;
@@ -355,30 +362,25 @@ int16_t audio_lerp(int16_t a, int16_t b, uint64_t pos)
 void audio_resample(const int16_t *data, size_t frames)
 {
 	for (size_t i = 0; i < frames; i++) {
-		const int16_t l = data[2 * i], r = data[2 * i + 1];
+		const int16_t m = (int16_t)(((int32_t)data[2 * i] + data[2 * i + 1]) / 2);
 
 		if (!rs_primed) {
-			rs_prev_l = rs_cur_l = l;
-			rs_prev_r = rs_cur_r = r;
+			rs_prev = rs_cur = m;
 			rs_pos = 0;
 			rs_primed = true;
 			continue;
 		}
-		rs_cur_l = l;
-		rs_cur_r = r;
+		rs_cur = m;
 		while (rs_pos < AUDIO_ONE_Q32) {
-			audio_last_l = (int16_t)tn_volume_apply(
-				audio_lerp(rs_prev_l, rs_cur_l, rs_pos), audio_gain);
-			audio_last_r = (int16_t)tn_volume_apply(
-				audio_lerp(rs_prev_r, rs_cur_r, rs_pos), audio_gain);
-			TN_AUDIO_DATA = ((uint32_t)(uint16_t)audio_last_l << 16) |
-					(uint16_t)audio_last_r;
+			audio_last = (int16_t)tn_volume_apply(
+				audio_lerp(rs_prev, rs_cur, rs_pos), audio_gain);
+			TN_AUDIO_DATA = ((uint32_t)(uint16_t)audio_last << 16) |
+					(uint16_t)audio_last;
 			audio_pairs++;
 			rs_pos += AUDIO_STEP_Q32;
 		}
 		rs_pos -= AUDIO_ONE_Q32;
-		rs_prev_l = rs_cur_l;
-		rs_prev_r = rs_cur_r;
+		rs_prev = rs_cur;
 	}
 }
 #endif
@@ -1557,9 +1559,9 @@ int main()
 				for (unsigned k = 0;
 				     k < AUDIO_TOPUP && level < AUDIO_LOW; k++) {
 					TN_AUDIO_DATA =
-						((uint32_t)(uint16_t)audio_last_l
+						((uint32_t)(uint16_t)audio_last
 						 << 16) |
-						(uint16_t)audio_last_r;
+						(uint16_t)audio_last;
 					level++;
 					audio_fix++;
 				}
