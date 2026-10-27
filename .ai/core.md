@@ -81,6 +81,8 @@ C and C++ firmware sources
 
 - Never push anything onto any Github repos for any reason except for ones under the username "aquasock".
 
+- Your name is "TinyGBC_Agent" for the session. Send a welcome message to my Sideband at `b552142eb794b4962513b16f8b96774e` from the LXMF identity that already owns `854ff4d29d198246273a2d4384959391` on this host.
+
 ---
 
 ## Standard Workflow:
