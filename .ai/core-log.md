@@ -963,3 +963,33 @@ Nothing is outstanding from this cycle. The board's clock can still be unset at 
 - User Test: PASS
 
 ---
+
+## 29 COMMIT Unreleased 2026-10-27T08:01:15-07:00
+
+#### Coming From:
+
+Unreleased b71ccca
+
+#### Purpose:
+
+Establish whether `tests/gb_bench_expected.txt`'s Oracle of Seasons boot line was invalidated by a later change or was never true of the committed tree, so the file is not relied on for a figure it cannot support.
+
+#### Outcome:
+
+The line was never true of the committed tree, and the tree's other baselines are sound. Before anything was concluded the two baselines that cover the picture path were re-run and reproduced: the uCity default build ends `VIDEO=aaddaa41 AUDIO=a36b5633 SAMPLES=987948` over 1,800 frames, and the `DISPLAY=1` build ends `FB=d6e86438` with the core's own checksums unchanged, which is the number an AE350 run is held against for the frame buffer the video unit fetches. The Oracle of Seasons boot run does not reproduce: `FRAMES=24000` with `tests/zelda_input.txt` embedded gives `VIDEO=95513058 AUDIO=0630f3c5 SAMPLES=13167010` where the file holds `VIDEO=900c74b5`, with the sound checksum and the sample count equal to the file's. Entry 24 saw the mismatch and left the cause open; it is settled here by rebuilding `d21c72a`, the commit that recorded the figure, in a scratch worktree with the fetched core symlinked in, where the same command gives `95513058` twice, so the discrepancy dates from the recording and not from any later cycle. Everything that could have made that run different was checked against what the file states: the cartridge hashes `862a5136...`, the fetched gambatte is at the pinned `d9d6cd06...` and clean, and `tests/zelda_input.txt` matches entry 2's description at 647 presses from frame 600 to 19,980, alternating every 60 frames with 3-frame holds. The one explanation that would fit a picture-only difference, a core built without `-DVIDEO_RGB565`, was tested and fails loudly rather than quietly: the harness grants only RGB565, so such a build is refused at load with `TinyGBC GB LOAD FAILED ROM=1048576` instead of producing a different checksum. What remains is that `900c74b5` came from a working state during entry 2's cycle that was not the one committed, most likely an earlier form of the input script, which would move the game onto different screens while the menus are silent; that is the leading explanation and not a proven one. Nothing in the tree reads the file, `gb_bench_expected` appearing only in this log, so no test could catch the mismatch and it survived four cycles. The A25 side of that line is unanchored for the same reason, and the walk baseline is unverifiable by construction because it is pinned to savestate `49d4a697...`, which entry 9 recorded the play build as having replaced with `c0c54bce...` and which lives in the gitignored `build/`. The file therefore keeps two baselines that work and two that cannot do their job; by the user's instruction nothing in it was changed this cycle, and it should be re-recorded or proven when that path is next touched, because a picture checksum that moves with the sound unchanged is also the shape a real regression would take. As a side check the benches were run: `video_gb_tb` passed fifteen checks, `sdram_video_tb` six with 160 halfwords, `tests/wii_pads_tb.sv` passed, and `tools/test_cart_zip.sh` returned its five accepted and four refused archives. No board was attached, so nothing was deployed or tested on hardware. The core-syntax audit re-read `.ai/core.md` and `.ai/core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `.ai/core.md` was not changed and entries 1 to 28 were not rewritten, and validated this entry as number 29 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and `None.` in Files Modified.
+
+#### Next Steps:
+
+The next cycle is input remapping, built the way TinyNES does it, so a controller's buttons can be rearranged without rebuilding the player. Standing work beside it is the left stick, whose bytes 0 and 1 the pad decode still does not map or deadzone, the silent session a launch without a date leaves on a clock cartridge, and the Input and Video pages, which are placeholders in TinyTang's `tinygbc_app.cpp` rather than files in this repository.
+
+#### Files Modified:
+
+None.
+
+#### Status:
+
+- Build: PASS
+- Deployment: N/A
+- User Test: N/A
+
+---
