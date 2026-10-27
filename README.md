@@ -150,14 +150,31 @@ tree's: the Library page lists the card's `.gbc`, `.gb` and `.zip` files from
 `/root/media/gb`, and launching one loads the core, sends the cartridge as the
 file the player asks for, and puts the desktop core back when the game exits.
 Its Audio page sets one master volume and a mute for HDMI and the I2S2
-together, kept in TinyTang's `/gbc.ini`: after the cartridge the player prints
-`TinyGBC SETTINGS WANT <address> <bytes>`, takes the volume in percent and the
-mute straight into its `HostSettings`, and scales every resampled pair by
-`tn_volume_gain` (`firmware/include/tinygbc.h`), a gain out of 256 that is the
-square of the percentage's fraction and exactly 256 at 100 percent; a host that
-sends nothing leaves full volume. It prints `TinyGBC GB VOLUME=<percent>`. Its
-Input, Video and Saves pages are placeholders until the player has something
-to set.
+together, kept in TinyTang's `/tinygbc.ini`: after the cartridge the player
+prints `TinyGBC SETTINGS WANT <address> <bytes>`, takes the volume in percent
+and the mute straight into its `HostSettings`, and scales every resampled pair
+by `tn_volume_gain` (`firmware/include/tinygbc.h`), a gain out of 256 that is
+the square of the percentage's fraction and exactly 256 at 100 percent; a host
+that sends nothing leaves full volume. It prints `TinyGBC GB VOLUME=<percent>`.
+Its Input, Video and Saves pages are placeholders until the player has
+something to set.
+
+A cartridge with a battery keeps its save on the card, in TinyNES's protocol,
+which TinyTang's `ae350run` answers for either product name. Once the game has
+loaded the player prints `TinyGBC NVRAM WANT <address> <bytes>` for gambatte's
+save RAM, and the launcher sends `/root/saves/gbc/<cartridge>.sav` straight into
+it; nothing arriving within about a second means the game has no save yet. When
+HOME and MINUS end the run, a save RAM that changed goes back as hex, 32 bytes a
+line, between `TinyGBC NVRAM SAVE <bytes> <crc32>` and `TinyGBC NVRAM DONE`,
+which the launcher checks before it replaces the file; one that did not change
+prints `TinyGBC NVRAM SAME` and leaves the card's copy alone. The lines are
+paced at about 4 ms each, so an 8 KiB save takes about a second to go back and
+the largest, 128 KiB, about 18 seconds. Only HOME and MINUS save: a game left by
+any other way keeps the save it started with. The real-time clock of an MBC3 or
+HuC3 cartridge is not kept, because `time()` on the A25 is the core's cycle
+counter, which counts from reset rather than giving the date. On the PC, `GB_SAVE=<file>` stands in for the card: a file of the
+save's size is loaded before the first frame and the save RAM is written back
+to it at the end.
 
 A `.zip` reaches the player unchanged; the player inflates it itself, reading
 the archive's central directory and checking the stored CRC-32 against what

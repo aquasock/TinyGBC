@@ -804,3 +804,34 @@ The standing work is unchanged: a battery save and a savestate on the A25 so the
 - User Test: PASS
 
 ---
+
+## 24 COMMIT Unreleased 2026-10-26T22:30:15-07:00
+
+#### Coming From:
+
+Unreleased 7c21769
+
+#### Purpose:
+
+Keep a battery-backed cartridge's save on the card, so a game started from the TinyGBC window resumes where it was saved rather than from a blank file.
+
+#### Outcome:
+
+TinyTang turned out to need nothing: its `ae350run` already answers `NVRAM WANT` and stores `NVRAM SAVE` hex lines for any program that names itself `TinyGBC`, mapping that name to `/root/saves/gbc/<cartridge>.sav` and creating the folder, so the cycle is the player alone. `firmware/apps/gb_bench/main.cpp`'s CART build takes gambatte's save RAM from `retro_get_memory_data(RETRO_MEMORY_SAVE_RAM)` once the game has loaded, prints `TinyGBC NVRAM WANT <address> <bytes>` before the settings request and takes the card's file straight into that buffer in the loader's protocol, waiting about a second when there is none, and prints `TinyGBC NVRAM GOT` with the CRC-32 of what landed. When HOME and MINUS end the run, a save RAM whose CRC-32 differs from the one it held as the game began goes back in TinyNES's form, three `BEGIN` lines, `TinyGBC NVRAM SAVE <bytes> <crc>`, hex 32 bytes a line paced at about 4 ms each, and `TinyGBC NVRAM DONE`; an unchanged one prints `TinyGBC NVRAM SAME` and is not sent, so a run that never saved, or whose save failed to arrive and was never written, leaves the card's copy alone. A cartridge with no battery has no save RAM and nothing is asked for. The PC build gained `GB_SAVE=<file>`, which loads a file of the save's size before the first frame and writes the save RAM back at the end, printing nothing when unset; the uCity default run still ends `VIDEO=aaddaa41 AUDIO=a36b5633` as `tests/gb_bench_expected.txt` holds. With it, the save RAM taken from the user's overworld savestate (`c0c54bce...`), 8,192 bytes with CRC-32 `145107fd`, was loaded into a fresh boot of Oracle of Seasons under `tests/zelda_input.txt`: where the run without it loops on name entry, the run with it picks file 1 and is in the overworld by frame 1,500, 776 of 800 sampled frames differ, and the save came back byte-identical, the case the player reports as `SAME`. The real-time clock of MBC3 and HuC3 cartridges (`RETRO_MEMORY_RTC`) is not kept, because `time()` on the A25 is the core's cycle counter and counts from reset rather than giving the date. The same check showed that `tests/gb_bench_expected.txt`'s Oracle of Seasons boot-script figure is stale: the source before this cycle gives `VIDEO=95513058` where the file holds `900c74b5`, with `AUDIO=0630f3c5` and 13,167,010 samples unchanged. `make CARD=1` built `tinygbc-play.elf`, 3,221,912 bytes, SHA-256 `20fe58d8a0f995cc97adbf70b77c2a53ad7e77b0c90f63acaf0ddc9e1bb4084b`, and TinyTang's `tinytang_put.py` put it at `/root/ae350/tinygbc-play.elf` on a board running `tinytang 416ba34-dirty.a98ea86`; the seed-6 core `78d01d47...` was not reloaded. The user saved in Link's Awakening DX, left with HOME and MINUS, relaunched, found the save restored and passed the cycle. Read back afterwards, `/root/saves/gbc/` holds `Legend of Zelda, The - Link's Awakening DX.sav` at 32,768 bytes, the cartridge's whole RAM; TinyTang's `/root/saves/last.log` could not confirm the CRC because the board's `cat` returned only its first 3,962 of 22,613 bytes and the shell has no `tail` or `grep`. README's launcher section describes the save, and its settings file is corrected from `/gbc.ini` to `/tinygbc.ini`, which TinyTang renamed in its entry 27. The core-syntax audit re-read `.ai/core.md` and `.ai/core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `.ai/core.md` was not changed and entries 1 to 23 were not rewritten, and validated this entry as number 24 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and only eligible paths in Files Modified.
+
+#### Next Steps:
+
+Savestates come next, one per cartridge on the card as TinyNES's entries 48 and 49 have them and on the same buttons; TinyTang already routes `TinyGBC STATE` lines to `/root/states/gbc/`. After that the left stick, the Input and Video pages, and the cartridge clock, which needs the date from the BL616 before a saved RTC means anything. `tests/gb_bench_expected.txt`'s Oracle of Seasons boot figure should be re-recorded once the reason for its change is known. In TinyTang, the comment at `ports/bl616/tang_fpga_uart.c` that calls the NVRAM and settings requests TinyNES-only is out of date, and `last.log` cannot be read past its first four kilobytes from the shell. `.ai/core.md`'s Purpose still names the project TinyNES and only the user can have it corrected.
+
+#### Files Modified:
+
+- README.md
+- firmware/apps/gb_bench/main.cpp
+
+#### Status:
+
+- Build: PASS
+- Deployment: PASS
+- User Test: PASS
+
+---

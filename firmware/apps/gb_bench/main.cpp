@@ -460,6 +460,116 @@ void receive_settings()
 }
 #endif
 
+/* A battery-backed cartridge's save RAM, gambatte's own buffer
+ * (RETRO_MEMORY_SAVE_RAM), null for a cartridge with no battery. The card's
+ * .sav is taken into it before the first frame and given back when the run
+ * ends. save_start_crc is what it held as the game began, so a run that
+ * never wrote it does not write the card. */
+uint8_t *save_ram;
+uint32_t save_len;
+[[maybe_unused]] uint32_t save_start_crc;
+
+/* A save the game never wrote is still what the core allocated: every byte
+ * the same. Worth saying, because a blank file and a real one look identical
+ * from the card. */
+[[maybe_unused]] bool save_is_blank()
+{
+	for (uint32_t i = 1; i < save_len; i++) {
+		if (save_ram[i] != save_ram[0])
+			return false;
+	}
+	return true;
+}
+
+#ifdef GB_CART
+/* Ask the host for the cartridge's .sav and take it straight into the core's
+ * buffer, in the boot ROM's load protocol, as TinyNES's player does and with
+ * the lines TinyTang's ae350run answers for either product name (saves under
+ * /root/saves/gbc/). Nothing arriving within about a second means the game
+ * has no save yet, the usual case, and leaves the blank buffer alone. */
+void receive_save()
+{
+	if (!save_ram || !save_len)
+		return;
+	printf("TinyGBC NVRAM WANT %08lx %08lx\n", (unsigned long)(uintptr_t)save_ram,
+	       (unsigned long)save_len);
+	fflush(stdout);
+	tn_load_reset();
+	uint32_t got = 0;
+
+	for (int step = 0; step < 10 && !got; step++)
+		got = tn_load_poll(TN_CORE_HZ / 10);
+	/* The load's own checksums judge the payload, and its entry says which
+	 * buffer it was framed for: anything else is not this save. */
+	if (got != (uintptr_t)save_ram)
+		return;
+	printf("TinyGBC NVRAM GOT %lu %08lx%s\n", (unsigned long)save_len,
+	       (unsigned long)crc_update(0, save_ram, save_len),
+	       save_is_blank() ? " BLANK" : "");
+	fflush(stdout);
+}
+
+/* Let the link's line out and leave it quiet a moment: the first bytes after a
+ * quiet spell are where it loses some (TinyNES, 2026-10-14), and the card's
+ * writes at the far end hold off the UART while they run. */
+void save_pace()
+{
+	tn_wait_tx_idle();
+	const uint64_t until = ticks() + tick_hz / 250;
+
+	while (ticks() < until)
+		;
+}
+
+/* Give the save RAM back as text, in TinyNES's form: link mode frames lines
+ * and drops carriage returns, so the bytes go as hex, 32 to a line, between a
+ * SAVE line carrying the length and CRC-32 and a DONE line, which ae350run
+ * checks before it replaces the card's file. A save the run did not change is
+ * not sent, so the card keeps its copy and the exit costs nothing. */
+void send_save()
+{
+	if (!save_ram || !save_len)
+		return;
+	const uint32_t crc = crc_update(0, save_ram, save_len);
+
+	if (crc == save_start_crc) {
+		printf("TinyGBC NVRAM SAME %08lx\n", (unsigned long)crc);
+		fflush(stdout);
+		tn_wait_tx_idle();
+		return;
+	}
+	for (int lead = 0; lead < 3; lead++) {
+		printf("TinyGBC NVRAM BEGIN\n");
+		save_pace();
+	}
+	printf("TinyGBC NVRAM SAVE %lu %08lx%s\n", (unsigned long)save_len,
+	       (unsigned long)crc, save_is_blank() ? " BLANK" : "");
+	save_pace();
+	const char *const digits = "0123456789abcdef";
+	char hex[65];
+	unsigned n = 0;
+
+	for (uint32_t i = 0; i < save_len; i++) {
+		hex[n++] = digits[save_ram[i] >> 4];
+		hex[n++] = digits[save_ram[i] & 15];
+		if (n == 64) {
+			hex[n] = 0;
+			printf("%s\n", hex);
+			save_pace();
+			n = 0;
+		}
+	}
+	if (n) {
+		hex[n] = 0;
+		printf("%s\n", hex);
+		save_pace();
+	}
+	printf("TinyGBC NVRAM DONE %08lx\n", (unsigned long)crc);
+	tn_wait_tx_idle();
+	save_pace();
+}
+#endif
+
 #ifdef GB_PAD_OUT
 /* The pad the fabric polls on bus 0. Bytes 4 and 5 of its report carry
  * fifteen active-low buttons and the left stick is bytes 0 and 1; reading
@@ -923,7 +1033,30 @@ int main()
 	if (state_size)
 		printf("TinyGBC GB STATE=%u LOADED\n", (unsigned)state_size);
 
+	save_ram = static_cast<uint8_t *>(retro_get_memory_data(RETRO_MEMORY_SAVE_RAM));
+	save_len = save_ram ? (uint32_t)retro_get_memory_size(RETRO_MEMORY_SAVE_RAM) : 0;
+#ifndef __riscv
+	/* GB_SAVE=<file> stands in for the card on the PC: a file of the save's
+	 * size is taken into the save RAM before the first frame, and the save RAM
+	 * is written back to it at the end. */
+	const char *save_path = getenv("GB_SAVE");
+	if (save_path && save_len) {
+		if (FILE *in = fopen(save_path, "rb")) {
+			const bool whole = fread(save_ram, 1, save_len, in) == save_len &&
+					   fgetc(in) == EOF;
+			fclose(in);
+			if (!whole) {
+				printf("TinyGBC GB NVRAM BAD SIZE\n");
+				return 1;
+			}
+			printf("TinyGBC GB NVRAM LOADED %u %08x\n", (unsigned)save_len,
+			       (unsigned)crc_update(0, save_ram, save_len));
+		}
+	}
+#endif
 #ifdef GB_CART
+	receive_save();
+	save_start_crc = crc_update(0, save_ram, save_len);
 	receive_settings();
 #ifdef GB_AUDIO_OUT
 	audio_gain = tn_volume_gain(host_settings.volume, host_settings.mute);
@@ -1194,6 +1327,24 @@ int main()
 	       (unsigned)video_pixels0);
 #endif
 	printf("\n");
+#endif
+
+#ifdef GB_CART
+	send_save();
+#endif
+#ifndef __riscv
+	if (save_path && save_len) {
+		FILE *out = fopen(save_path, "wb");
+
+		if (!out || fwrite(save_ram, 1, save_len, out) != save_len) {
+			printf("TinyGBC GB NVRAM WRITE FAILED\n");
+			return 1;
+		}
+		fclose(out);
+		printf("TinyGBC GB NVRAM SAVED %u %08x%s\n", (unsigned)save_len,
+		       (unsigned)crc_update(0, save_ram, save_len),
+		       save_is_blank() ? " BLANK" : "");
+	}
 #endif
 
 	return 0;
