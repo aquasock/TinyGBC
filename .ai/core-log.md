@@ -835,3 +835,35 @@ Savestates come next, one per cartridge on the card as TinyNES's entries 48 and 
 - User Test: PASS
 
 ---
+
+## 25 COMMIT Unreleased 2026-10-26T23:26:04-07:00
+
+#### Coming From:
+
+Unreleased 9410e53
+
+#### Purpose:
+
+Give the Game Boy player save states the way TinyNES has them, one per cartridge saved with HOME and L and loaded with HOME and R and kept on the card, with the TinyGBC window's Saves page showing them and the battery save.
+
+#### Outcome:
+
+`firmware/apps/gb_bench/main.cpp`'s CART build keeps one slot sized by `retro_serialize_size()`, a 32-byte header in TinyNES's `TNS1` layout with the magic `TGS1` (the cartridge's CRC-32, the first 32 bits of gambatte's commit, `d9d6cd06`, which the Makefile takes from `tools/fetch_gambatte.sh` as `GB_GAMBATTE_COMMIT`, a patch field of 0, the frame, the length and the state's CRC-32) before gambatte's own state. HOME with L saves and HOME with R loads, once a press and not while the desktop is shown, `desk_link.sv` being byte-identical to TinyNES's so neither is a HOME tap; R refuses a state naming another cartridge or failing its CRC. A save is copied to a send buffer and goes out in the background in TinyNES's form, two `TinyGBC STATE BEGIN` lines, `TinyGBC STATE DATA <bytes> <crc32>` and the file as bytes through `tn_put_char`, 256 a frame, while the F= report and any state line wait so the host never counts them as payload, and a send still going at exit finishes before the summary. At launch the player prints `TinyGBC STATE WANT` after the battery save and takes the card's file into the slot without loading it. The cartridge's RAM is inside gambatte's state, so after R the battery save written at exit is the state's, TinyNES's rule. The benchmark gained `STATETEST=<n>`. Its first form compared a replay from the state with a run that never loaded and found the picture identical at every point but the sound different in every frame after the load; a temporary per-frame trace showed why, gambatte's `retro_unserialize` resetting its audio resampler and output buffer by design, which swaps the 549 and 548-sample framing and restarts the filter history. The test now loads its own state at the save point so both timelines start from that reset, then checks that a state from another cartridge and one with a byte flipped are refused. It matched picture and sound at eight points on the PC, uCity at frames 300, 900 and 1,500 (182,509-byte state, its 128 KiB cartridge RAM included) and Oracle of Seasons from boot at 900, 6,000 and 18,000 and from the overworld state at 300 and 1,800 (59,629 bytes), and on the A25, with the seed-6 core `tinygbc.bin` loaded by `tangload` and the desktop core put back afterwards, uCity at 900 and the overworld at 1,800 matched with the PC's checksums, a save taking 13.6 and 5.0 ms and a load 8.9 and 3.2 ms. The uCity default run still ends `VIDEO=aaddaa41 AUDIO=a36b5633`. TinyTang's transport needed nothing; its TinyGBC window's Saves page was ported from TinyNES's in TinyTang's entry 47, built as `a879a92-dirty.3c5e535` and flashed with `tinytang_flash.py`. `make CARD=1` built `tinygbc-play.elf`, 3,239,232 bytes, SHA-256 `08bb91582e368e2ec2f62f94bf1b90cc11151b9d2724af7fb81279b683fb36d8`, put at `/root/ae350/tinygbc-play.elf`. After a power cycle the user tested saving, loading, a state across a relaunch and the Saves page, and passed the cycle. Read back afterwards, `platform` reported `a879a92-dirty.3c5e535`, and `/root/states/gbc/` held `Pokemon Pinball (USA, Australia) (Rumble Version).state` at 59,661 bytes, its 59,629-byte state and the header, with that cartridge's 8,192-byte `.sav` beside entry 24's Link's Awakening DX save. README describes the states, and `.ai/core-reference.md` gained EMU-009 for gambatte's state, its contents, its size and the reset outside it, with an index line and a routing row, the EMU topic's description widened from the NES to both cores and `last_reviewed` moved to 2026-10-26; its six YAML blocks parse and the index and records name the same 183 ids in the same order. The core-syntax audit re-read `.ai/core.md` and `.ai/core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `.ai/core.md` was not changed and entries 1 to 24 were not rewritten, and validated this entry as number 25 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and only eligible paths in Files Modified.
+
+#### Next Steps:
+
+The clock of MBC3 and HuC3 cartridges, for Pokemon Gold, Silver and Crystal among others, is next as the user set out: gambatte keeps it as an 8-byte `baseTime` against `std::time(0)` (EMU-009), and on the A25 `time()` counts from reset, so the player needs the date from the BL616's RTC at launch and a place to keep `baseTime` beside the battery save. A state's send takes about four seconds for a 60 KB state and twelve for uCity's, and a lost send leaves the previous card file in place with only TinyTang's log saying so, as in TinyNES. The left stick, the Input and Video pages and the stale Oracle of Seasons boot figure in `tests/gb_bench_expected.txt` stand.
+
+#### Files Modified:
+
+- README.md
+- firmware/apps/gb_bench/Makefile
+- firmware/apps/gb_bench/main.cpp
+
+#### Status:
+
+- Build: PASS
+- Deployment: PASS
+- User Test: PASS
+
+---

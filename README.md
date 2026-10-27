@@ -172,7 +172,33 @@ paced at about 4 ms each, so an 8 KiB save takes about a second to go back and
 the largest, 128 KiB, about 18 seconds. Only HOME and MINUS save: a game left by
 any other way keeps the save it started with. The real-time clock of an MBC3 or
 HuC3 cartridge is not kept, because `time()` on the A25 is the core's cycle
-counter, which counts from reset rather than giving the date. On the PC, `GB_SAVE=<file>` stands in for the card: a file of the
+counter, which counts from reset rather than giving the date.
+
+Save states work as TinyNES's do (TinyNES core-log entries 48 and 49): one
+state per cartridge, HOME with L to save and HOME with R to load, once a press
+and never while the desktop is up, and neither combination is a tap of HOME,
+so the desktop does not come up. The state is gambatte's own
+(`retro_serialize`), after a 32-byte header in TinyNES's layout with the magic
+`TGS1`: the cartridge's CRC-32, the first 32 bits of gambatte's commit, the
+frame, the length and the state's CRC-32. R refuses a state whose header names
+another cartridge or whose CRC does not match. Each save also goes to the card
+in the background as `/root/states/gbc/<cartridge>.state`, as two
+`TinyGBC STATE BEGIN` lines, `TinyGBC STATE DATA <bytes> <crc32>` and the file
+as bytes, 256 a frame, with nothing else printed until it has gone: about four
+seconds for Oracle of Seasons' 59,629-byte state and twelve for uCity's
+182,509, which holds its 128 KiB of cartridge RAM. At launch the player asks
+for it with `TinyGBC STATE WANT` and takes it into the slot without loading it.
+The cartridge's RAM is in the state, so after R the battery save written at
+exit is the state's: the state wins. `make STATETEST=<n>` checks a state on
+either build: it saves before frame `n` and loads it straight back, plays on,
+loads it again after the run and plays the same frames over, and fails unless
+picture and sound repeat exactly and both a state from another cartridge and
+one with a byte changed are refused. The load in the run is deliberate:
+gambatte's libretro driver resets its audio resampler and output buffer on
+every load, so the sound after a load is split into frames differently from a
+run that never loaded, while the machine and the picture are unchanged.
+
+On the PC, `GB_SAVE=<file>` stands in for the card: a file of the
 save's size is loaded before the first frame and the save RAM is written back
 to it at the end.
 

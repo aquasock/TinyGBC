@@ -120,8 +120,8 @@ Topic IDs are the `record_id` prefix. An entry reserves a name; it does not clai
   description: "Bouffalo SDK, CherryUSB, Gowin programmer, and RISC-V toolchain behaviour that affects correctness, plus the provenance and licence of code vendored into this project."
 
 - topic_id: EMU
-  name: "NES emulator cores on the AE350"
-  description: "Emulator cores tried on the A25: which revision, how they are built and checked against a PC build, and how fast they run."
+  name: "Emulator cores on the AE350"
+  description: "Emulator cores run on the A25, NES and Game Boy: which revision, how they are built and checked against a PC build, how fast they run, and how their save states behave."
 
 - topic_id: WII
   name: "Wii extension controllers"
@@ -316,6 +316,7 @@ Topic IDs are the `record_id` prefix. An entry reserves a name; it does not clai
 | Why was FCEUmm silent under nes_bench's own driver, and what does real sound cost? | EMU | EMU-006 |
 | How accurate is FCEUmm by AccuracyCoin, what do TinyNES's patches fix, and what do they cost? | EMU | EMU-007 |
 | Why did Zelda II's intro play slowly with broken sound, and what fixed it? | EMU | EMU-008 |
+| What is in a gambatte save state, and does it reload exactly? | EMU | EMU-009 |
 | What are AccuracyCoin and TriCNES, and on what terms does TinyNES use them? | PROV | PROV-009 |
 | Which silicon revision is this board, and which revision is the core image? | PSX | PSX-001 |
 | How much logic and block RAM does the device have? | PSX | PSX-002 |
@@ -507,6 +508,7 @@ EMU-005: "Played by hand with a Wii Classic Controller Pro on PMOD0 bus 1, nes_b
 EMU-006: "FCEUI_Initialize clears FSettings, leaving the five APU channel volumes at 0, so nes_bench's own driver mixed silence until it set them to 256 as the libretro driver does; with real sound Castlevania still runs at 153.5 percent, and the play build plays it on the I2S2 with no underrun"
 EMU-007: "AccuracyCoin on FCEUmm ac0d00a under nes_bench: 84 of 146 with page 19 skipped, 83 with only its Misaligned OAM Behavior skipped, which hangs; TinyNES's seven patches and the Four Score turned off raise that to 90, the user saw 90 on the board, and the A25 benchmark slows from 10.93 to 11.08 ms a frame with identical checksums"
 EMU-008: "Zelda II's title screen polls $2002 about 1,900 times a frame and FCEUmm rebuilt a 256-entry palette table on each resulting partial-line render, so its intro took 17.45 ms a frame on the A25 (1,690 of 1,800 frames over 16.64 ms); patch 0008 rebuilds the table only when its 16 palette bytes change, giving 9.95 ms, and Castlevania's benchmark 9.03 ms, with identical checksums"
+EMU-009: "gambatte d9d6cd0's retro_serialize state holds the cartridge RAM and is 59,629 bytes for Oracle of Seasons and 182,509 for uCity; it round-trips exactly on the PC and the A25, but retro_unserialize resets the libretro driver's audio resampler and output buffer, so sound after a load is framed differently from a run that never loaded"
 WII-001: "Wii extensions use I2C address 0x52; write F0=55 then FB=00 to disable encryption, read six identity bytes at FA and six format-1 data bytes after setting pointer 00; NintendoExtensionCtrl waits 10 ms, 20 ms and 175 us at those steps and accepts Classic IDs 00/01 00 A4 20 00..03 01; buttons in bytes 4-5 are active low"
 WII-002: "Adafruit's Wii Nunchuck Breakout Adapter (4836) takes VIN as the logic reference and level-shifts SCL/SDA for 3-5 V with a 10K pull-up on each, address fixed at 0x52, and works on a PMOD0 I2C pair at 3.3 V; Adafruit's CYBERDECK HAT is a Raspberry Pi HAT and must not be mated to this board's 2x20 SDRAM headers"
 WII-003: "This Classic Controller: byte 4 bit 1 R, 2 Plus, 3 Home, 4 Minus, 5 L, 6 Down, 7 Right; byte 5 bit 0 Up, 1 Left, 2 ZR, 3 X, 4 A, 5 Y, 6 B, 7 ZL, all active low - WiiBrew's table does not match it"
@@ -2896,6 +2898,19 @@ Records are grouped in the order of the topic catalog, and numbered within each 
     - "https://github.com/libretro/libretro-fceumm/issues/330"
   verification: "Measured on 2026-10-14 (core-log entry 38) with gprof on the PC build and on the board in two-wire mode with ae350_soc.bin 5d4f88cd, before and after the patch; the user then played the intro on HDMI with the patched player and passed it."
 
+- record_id: EMU-009
+  kind: EXTERNAL
+  topic_id: EMU
+  title: "gambatte's libretro save state: what it holds, its size, and what a load resets outside it"
+  status: VERIFIED
+  verified_date: 2026-10-26
+  statement: "In libretro gambatte d9d6cd06382d1ced30de34d56d3609452323dab1, retro_serialize writes the whole machine through gb.saveState, including the cartridge's RAM, so a state's length depends on the cartridge and not on when it is taken: 59,629 bytes for The Legend of Zelda - Oracle of Seasons (USA, Australia), 8 KiB of cartridge RAM, and 182,509 for uCity 1.3, 128 KiB. retro_unserialize loads it and then, outside the state, resets the driver's blipper resamplers (or CC_init for the CC resampler), sets audio_out_buffer_pos to 0, resets the frame-pacing counters and clears the frame-blending history, which its comment gives as making a load deterministic. RETRO_MEMORY_SAVE_RAM is the cartridge's RAM bank data when header byte 0x147 names a battery, and RETRO_MEMORY_RTC is the 8-byte baseTime of an MBC3 or HuC3 clock, which counts against std::time(0)."
+  consequence: "A state reloads the machine exactly: firmware/apps/gb_bench's STATETEST matched picture and sound at eight points on the PC, uCity at frames 300, 900 and 1,500 and Oracle of Seasons from boot at 900, 6,000 and 18,000 and from an overworld state at 300 and 1,800, and on the A25 at uCity 900 and the overworld 1,800 with the PC's checksums. Compared with a run that never loaded, the picture is identical but every frame's sound differs, because the reset moves where the 548.9-sample frames split (549 and 548 swap phase) and restarts the resampler's filter history; the test therefore loads its own state at the save point so both timelines start from the same reset. This is a property of the libretro driver, not of the emulated machine. A state save took 5.0 ms and a load 3.2 ms on the A25 for the 59,629-byte state, and 13.6 and 8.9 ms for the 182,509-byte one. Because the cartridge RAM is in the state, a loaded state's battery RAM is what the player writes back at exit. On the A25 time() is the core's cycle counter from reset, so a saved RTC baseTime does not carry the date across sessions."
+  sources:
+    - "libretro gambatte d9d6cd06382d1ced30de34d56d3609452323dab1: libgambatte/libretro/libretro.cpp (retro_serialize, retro_unserialize, retro_get_memory_data, retro_get_memory_size), libgambatte/src/mem/cartridge_libretro.cpp (savedata_ptr, rtcdata_ptr, hasBattery, hasRtc), libgambatte/src/mem/rtc.cpp"
+    - "This project's firmware/apps/gb_bench/main.cpp (GB_STATE_TEST, StateHeader) and firmware/rt/syscalls.c (_gettimeofday)"
+  verification: "Read and measured on 2026-10-26 (core-log entry 25): the eight STATETEST runs on the PC, the two on the A25 under ae350_soc.bin 78d01d47, and a temporary per-frame audio trace showing the 549/548 phase swap; the user then saved and loaded states in the play build and passed it."
+
 - record_id: WII-001
   kind: EXTERNAL
   topic_id: WII
@@ -3008,7 +3023,7 @@ Records are grouped in the order of the topic catalog, and numbered within each 
 - A `core-syntax.md` audit is required whenever this file changes, per `.ai/core.md`.
 
 ```yaml
-last_reviewed: 2026-10-23
+last_reviewed: 2026-10-26
 ```
 
 ---

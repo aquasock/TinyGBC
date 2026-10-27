@@ -20,6 +20,8 @@
 # frame, so the picture can be watched. PACE implies DISPLAY. AUDIO=1 resamples
 # the core's 32,768 Hz sound to the DAC's 48,828.125 Hz and plays it on the
 # Pmod I2S2 and HDMI; the PC build has no sink and only checksums the samples.
+# STATETEST=<n> saves a state before frame n, loads it after the run and plays
+# the frames after it again, failing unless picture and sound repeat exactly.
 # The programs contain the core and are GPL-2.0
 # (third_party/gambatte-libretro/COPYING); with the cartridge image built in
 # they are for local use only.
@@ -66,9 +68,14 @@ FRAMES  ?= 0
 APP     := tinygbc-play
 BUILD   ?= $(abspath ../../../build/firmware/apps/gb_card)
 endif
+# A save state's header names the core it came from: the first 32 bits of the
+# gambatte commit tools/fetch_gambatte.sh pins.
+GAMBATTE_COMMIT8 := $(shell sed -n 's/^commit=\(........\).*/\1/p' ../../../tools/fetch_gambatte.sh)
 APP_DEFS += $(if $(FRAMES),-DGB_FRAMES=$(FRAMES)) \
             $(if $(INPUT),-DGB_INPUT='"$(INPUT)"') \
-            $(if $(CHECK),-DGB_CHECK=$(CHECK))
+            $(if $(CHECK),-DGB_CHECK=$(CHECK)) \
+            $(if $(STATETEST),-DGB_STATE_TEST=$(STATETEST)) \
+            -DGB_GAMBATTE_COMMIT=0x$(GAMBATTE_COMMIT8)u
 ifneq ($(filter 1,$(DISPLAY) $(PACE)),)
 APP_DEFS += -DGB_DISPLAY
 endif

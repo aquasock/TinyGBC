@@ -50,6 +50,7 @@
 // The core is GPL-2.0 (third_party/gambatte-libretro/COPYING); with a
 // cartridge image built in, the program is for local use only.
 
+#include <cstdarg>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -106,6 +107,12 @@ extern "C" const unsigned char gb_state[], gb_state_end[];
 #endif
 #if GB_FRAMES == 0 && !defined(GB_PAD_OUT)
 #error GB_FRAMES=0 runs until HOME and MINUS, so it needs GB_PAD
+#endif
+/* GB_STATE_TEST=<n> saves a state before frame n, loads it when the run ends
+ * and plays the frames after it again with the same script, so a state is
+ * proved to round-trip exactly rather than assumed to. */
+#if defined(GB_STATE_TEST) && (defined(GB_CART) || GB_FRAMES == 0)
+#error GB_STATE_TEST replays a scripted run of a fixed number of frames
 #endif
 
 namespace {
@@ -570,6 +577,213 @@ void send_save()
 }
 #endif
 
+#if defined(GB_CART) || defined(GB_STATE_TEST)
+/* Save states are gambatte's own (retro_serialize): the CPU, the work and
+ * video RAM, the PPU, the APU, the timer and the cartridge's banking, RAM and
+ * clock, one buffer whose length depends on the cartridge and not on when it
+ * is taken. The cartridge's RAM is in it, so a loaded state's battery RAM is
+ * what the exit writes back as the battery save: the state wins, as it does
+ * in TinyNES (TinyNES core-log entry 48).
+ *
+ * A slot is a state file as the card keeps it: TinyNES's 32-byte header with
+ * TinyGBC's own magic, then the state. The header names the cartridge, so a
+ * state is never loaded into another game, and the core it came from, which
+ * is reported but not enforced. gambatte is built unpatched, so the patch
+ * field is 0. */
+const char STATE_MAGIC[4] = { 'T', 'G', 'S', '1' };
+
+struct StateHeader {
+	char magic[4];		/* "TGS1" */
+	uint16_t header_bytes;	/* sizeof(StateHeader) */
+	uint16_t version;	/* 1 */
+	uint32_t rom_crc;	/* CRC-32 of the cartridge the state was taken in */
+	uint32_t gambatte;	/* the first 32 bits of gambatte's commit */
+	uint32_t patches;	/* 0: gambatte is built as fetched */
+	uint32_t frame;		/* the player's frame count when saved */
+	uint32_t length;	/* bytes of state after the header */
+	uint32_t crc;		/* CRC-32 of those bytes */
+};
+static_assert(sizeof(StateHeader) == 32, "the state header is 32 bytes");
+
+struct StateSlot {
+	uint8_t *buf = nullptr;	/* header, then state */
+	size_t size = 0;	/* the state's own length */
+	bool full = false;
+	StateHeader *header() const { return reinterpret_cast<StateHeader *>(buf); }
+	size_t file_bytes() const { return sizeof(StateHeader) + size; }
+};
+
+bool state_alloc(StateSlot &slot)
+{
+	const size_t size = retro_serialize_size();
+
+	if (size == 0)
+		return false;
+	slot.buf = static_cast<uint8_t *>(malloc(sizeof(StateHeader) + size));
+	slot.size = slot.buf ? size : 0;
+	return slot.buf != nullptr;
+}
+
+bool state_save(StateSlot &slot, uint32_t rom_crc, uint32_t frame)
+{
+	uint8_t *const state = slot.buf + sizeof(StateHeader);
+
+	slot.full = retro_serialize(state, slot.size);
+	if (!slot.full)
+		return false;
+	StateHeader &h = *slot.header();
+	memcpy(h.magic, STATE_MAGIC, sizeof h.magic);
+	h.header_bytes = sizeof(StateHeader);
+	h.version = 1;
+	h.rom_crc = rom_crc;
+	h.gambatte = GB_GAMBATTE_COMMIT;
+	h.patches = 0;
+	h.frame = frame;
+	h.length = (uint32_t)slot.size;
+	h.crc = crc_update(0, state, slot.size);
+	return true;
+}
+
+/* Why a slot's file cannot be loaded into this game, or nullptr if it can. */
+const char *state_refusal(const StateSlot &slot, uint32_t rom_crc)
+{
+	const StateHeader &h = *slot.header();
+
+	if (memcmp(h.magic, STATE_MAGIC, sizeof h.magic) != 0 ||
+	    h.header_bytes != sizeof(StateHeader) || h.version != 1)
+		return "NOT A STATE";
+	if (h.rom_crc != rom_crc)
+		return "OTHER GAME";
+	if (h.length != slot.size)
+		return "WRONG LENGTH";
+	if (h.crc != crc_update(0, slot.buf + sizeof(StateHeader), slot.size))
+		return "BAD CRC";
+	return nullptr;
+}
+
+bool state_load(const StateSlot &slot)
+{
+	return slot.full && retro_unserialize(slot.buf + sizeof(StateHeader), slot.size);
+}
+#endif
+
+#ifdef GB_CART
+/* Ask the host for the cartridge's save state, which the card keeps as its
+ * .state, and take it into the slot without loading it: R loads it, as it
+ * loads one saved since. Nothing arriving within about a second means the
+ * game has none, the usual case. A file whose header names another game, or
+ * whose state does not match its own checksum, leaves the slot empty. */
+void receive_state(StateSlot &slot, uint32_t rom_crc)
+{
+	printf("TinyGBC STATE WANT %08lx %08lx\n", (unsigned long)(uintptr_t)slot.buf,
+	       (unsigned long)slot.file_bytes());
+	fflush(stdout);
+	tn_load_reset();
+	uint32_t got = 0;
+
+	for (int step = 0; step < 10 && !got; step++)
+		got = tn_load_poll(TN_CORE_HZ / 10);
+	if (got != (uintptr_t)slot.buf)
+		return;
+	if (const char *why = state_refusal(slot, rom_crc)) {
+		printf("TinyGBC GB STATE BAD %s\n", why);
+		return;
+	}
+	const StateHeader &h = *slot.header();
+
+	slot.full = true;
+	printf("TinyGBC GB STATE READY F=%lu CORE=%s\n", (unsigned long)h.frame,
+	       h.gambatte == GB_GAMBATTE_COMMIT ? "SAME" : "OTHER");
+}
+
+/* A saved state goes to the host, which keeps it on the card as the
+ * cartridge's .state, while the game runs, in TinyNES's form: two lines to
+ * wake the link, whose first frame after a quiet spell is where it loses bytes
+ * (save_pace), the file's length and CRC-32, then the file itself, STATE_CHUNK
+ * bytes a frame, as bytes rather than hex and through tn_put_char rather than
+ * printf, whose newline gains a carriage return. The host counts the payload
+ * by its length, so nothing else may be printed until it has gone: a line
+ * that comes due meanwhile waits in note, and a newer save waits behind the
+ * one going. */
+const size_t STATE_CHUNK = 256;
+
+struct StateSender {
+	uint8_t *buf = nullptr;	/* a copy of the slot, which L may overwrite */
+	size_t len = 0, sent = 0;
+	uint32_t crc = 0;
+	unsigned phase = 0;	/* 0 idle, 1-2 wake lines, 3 header, 4 payload */
+	bool again = false;
+	char note[112] = "";
+	bool busy() const { return phase != 0; }
+};
+
+StateSlot quick;
+StateSender state_tx;
+
+void sender_start(StateSender &tx, const StateSlot &slot)
+{
+	memcpy(tx.buf, slot.buf, slot.file_bytes());
+	tx.len = slot.file_bytes();
+	tx.crc = crc_update(0, tx.buf, tx.len);
+	tx.sent = 0;
+	tx.phase = 1;
+	tx.again = false;
+}
+
+/* A line now, or once the payload has gone. Only the newest waits. */
+void state_say(StateSender &tx, const char *format, ...)
+{
+	va_list args;
+
+	va_start(args, format);
+	if (tx.busy()) {
+		vsnprintf(tx.note, sizeof tx.note, format, args);
+	} else {
+		vprintf(format, args);
+		printf("\n");
+		fflush(stdout);
+	}
+	va_end(args);
+}
+
+/* One frame's share of the send, then whatever waited for it. */
+void sender_step(StateSender &tx, const StateSlot &slot)
+{
+	if (tx.phase == 1 || tx.phase == 2) {
+		printf("TinyGBC STATE BEGIN\n");
+		fflush(stdout);
+		tx.phase++;
+		return;
+	}
+	if (tx.phase == 3) {
+		printf("TinyGBC STATE DATA %lu %08lx\n", (unsigned long)tx.len,
+		       (unsigned long)tx.crc);
+		fflush(stdout);
+		tx.phase = 4;
+		return;
+	}
+	if (tx.phase == 4) {
+		const size_t n = tx.len - tx.sent < STATE_CHUNK ? tx.len - tx.sent : STATE_CHUNK;
+
+		for (size_t i = 0; i < n; i++)
+			tn_put_char((char)tx.buf[tx.sent + i]);
+		tx.sent += n;
+		if (tx.sent < tx.len)
+			return;
+		tx.phase = 0;
+		printf("TinyGBC GB STATE SENT %lu %08lx\n", (unsigned long)tx.len,
+		       (unsigned long)tx.crc);
+	}
+	if (tx.note[0]) {
+		printf("%s\n", tx.note);
+		tx.note[0] = 0;
+	}
+	if (tx.again)
+		sender_start(tx, slot);
+	fflush(stdout);
+}
+#endif
+
 #ifdef GB_PAD_OUT
 /* The pad the fabric polls on bus 0. Bytes 4 and 5 of its report carry
  * fifteen active-low buttons and the left stick is bytes 0 and 1; reading
@@ -663,6 +877,20 @@ bool pad_quit(void)
 
 	return pad_ready && (b4 & PAD_B4_HOME) && (b4 & PAD_B4_MINUS);
 }
+
+#ifdef GB_CART
+/* L or R held with HOME, as PAD_B4_L and PAD_B4_R: L saves the state and R
+ * loads it. Neither is a tap of HOME (desk_link.sv), so TinyDesk is not
+ * brought up by them. */
+unsigned pad_combo(void)
+{
+	const unsigned b4 = ~pad_data2 & 0xffu;
+
+	if (!pad_ready || !(b4 & PAD_B4_HOME))
+		return 0;
+	return b4 & (PAD_B4_L | PAD_B4_R);
+}
+#endif
 #endif
 
 // What the core last handed over, recorded in the callback and read after
@@ -755,6 +983,21 @@ bool gb_environment(unsigned cmd, void *data)
 }
 
 } // extern "C"
+
+#ifdef GB_STATE_TEST
+/* One frame into a pair of checksums: every frame's picture and sound, so a
+ * replay that differs anywhere is caught. */
+void fold_frame(uint32_t &video, uint32_t &audio)
+{
+	if (frame_ptr) {
+		const uint8_t *p = static_cast<const uint8_t *>(frame_ptr);
+
+		for (unsigned y = 0; y < frame_h; y++)
+			video = crc_update(video, p + y * frame_pitch, frame_w * 2);
+	}
+	audio = crc_update(audio, audio_copy, audio_copy_frames * 2 * sizeof(int16_t));
+}
+#endif
 
 } // namespace
 
@@ -1057,6 +1300,16 @@ int main()
 #ifdef GB_CART
 	receive_save();
 	save_start_crc = crc_update(0, save_ram, save_len);
+	/* The one save state, in the SDRAM: L saves into it, R loads it. The
+	 * card's copy of the cartridge's state is taken into it now, not loaded. */
+	if (state_alloc(quick))
+		state_tx.buf = static_cast<uint8_t *>(malloc(quick.file_bytes()));
+	const bool quick_ok = quick.buf && state_tx.buf;
+	unsigned combo_prev = 0;
+
+	printf("TinyGBC GB STATE SLOT=%u\n", quick_ok ? (unsigned)quick.size : 0u);
+	if (quick_ok)
+		receive_state(quick, rom_crc);
 	receive_settings();
 #ifdef GB_AUDIO_OUT
 	audio_gain = tn_volume_gain(host_settings.volume, host_settings.mute);
@@ -1156,6 +1409,11 @@ int main()
 	/* Frames since the last F= line. */
 	uint64_t iv_us = 0, iv_max = 0;
 	unsigned iv_frames = 0;
+#ifdef GB_STATE_TEST
+	StateSlot test_slot;
+	uint64_t test_save_us = 0;
+	uint32_t test_video = 0, test_audio = 0;
+#endif
 
 	unsigned ran = 0;
 
@@ -1168,11 +1426,77 @@ int main()
 		if (frames == 0 && pad_quit())
 			break;
 #endif
+#ifdef GB_CART
+		/* HOME with L saves the state and HOME with R loads it, once a
+		 * press, while the game has the controller. A save goes to the card
+		 * as well, in the background. */
+		{
+			const unsigned combo = pad_combo();
+			const unsigned pressed = combo & ~combo_prev;
+
+			combo_prev = combo;
+			if (pressed && quick_ok && !(TN_LINK_STATUS & TN_LINK_SHOWN)) {
+				const uint64_t t0 = ticks();
+
+				if (pressed & PAD_B4_L) {
+					const bool ok = state_save(quick, rom_crc, f);
+
+					state_say(state_tx, "TinyGBC GB STATE SAVE %s F=%u US=%llu",
+						  ok ? "OK" : "FAILED", f,
+						  (unsigned long long)to_us(ticks() - t0));
+					if (ok) {
+						if (state_tx.busy())
+							state_tx.again = true;
+						else
+							sender_start(state_tx, quick);
+					}
+				} else if (!quick.full) {
+					state_say(state_tx, "TinyGBC GB STATE LOAD EMPTY F=%u", f);
+				} else if (const char *why = state_refusal(quick, rom_crc)) {
+					state_say(state_tx, "TinyGBC GB STATE LOAD REFUSED %s", why);
+				} else {
+					const bool ok = state_load(quick);
+
+					state_say(state_tx, "TinyGBC GB STATE LOAD %s F=%u FROM=%lu US=%llu",
+						  ok ? "OK" : "FAILED", f,
+						  (unsigned long)quick.header()->frame,
+						  (unsigned long long)to_us(ticks() - t0));
+				}
+			}
+		}
+#endif
+#ifdef GB_STATE_TEST
+		if (f == GB_STATE_TEST) {
+			const uint64_t t0 = ticks();
+
+			if (!state_alloc(test_slot) || !state_save(test_slot, rom_crc, f)) {
+				printf("TinyGBC GB STATE SAVE FAILED\n");
+				return 1;
+			}
+			test_save_us = to_us(ticks() - t0);
+			/* gambatte's libretro driver resets its audio resampler and
+			 * output buffer on every load (retro_unserialize), so the
+			 * sound after a load is framed differently from the sound of
+			 * a run that never loaded, while the machine is the same. The
+			 * run therefore loads its own state here, and the replay
+			 * after it starts from the same reset: what is compared is
+			 * whether the state holds everything the frames after it
+			 * depend on. */
+			if (!state_load(test_slot)) {
+				printf("TinyGBC GB STATE LOAD FAILED\n");
+				return 1;
+			}
+		}
+#endif
 		ran = f + 1;
 
 		uint64_t a = ticks();
 		retro_run();
 		uint64_t d = to_us(ticks() - a);
+#ifdef GB_STATE_TEST
+		if (f >= GB_STATE_TEST)
+			fold_frame(test_video, test_audio);
+#endif
 
 		if (frame_ptr && f % GB_CHECK == 0) {
 			const uint8_t *p = static_cast<const uint8_t *>(frame_ptr);
@@ -1266,7 +1590,14 @@ int main()
 			;
 #endif
 
-		if (iv_frames == GB_CHECK) {
+		/* A report that comes due while a state is going out waits for it,
+		 * or the host would count it as payload. */
+#ifdef GB_CART
+		const bool report_held = state_tx.busy();
+#else
+		const bool report_held = false;
+#endif
+		if (iv_frames >= GB_CHECK && !report_held) {
 			printf("TinyGBC GB F=%u AVG=%u MAX=%u VIDEO=%08x AUDIO=%08x\n",
 			       f + 1, (unsigned)(iv_us / iv_frames), (unsigned)iv_max,
 			       (unsigned)video_crc, (unsigned)audio_crc);
@@ -1274,7 +1605,19 @@ int main()
 			iv_max = 0;
 			iv_frames = 0;
 		}
+#ifdef GB_CART
+		sender_step(state_tx, quick);
+#endif
 	}
+#ifdef GB_CART
+	/* A state still going out is finished before anything else is printed,
+	 * paced as the battery save is, or the host would count the summary as
+	 * its payload. */
+	while (state_tx.busy() || state_tx.again) {
+		sender_step(state_tx, quick);
+		save_pace();
+	}
+#endif
 
 	if (iv_frames)
 		printf("TinyGBC GB F=%u AVG=%u MAX=%u VIDEO=%08x AUDIO=%08x\n", ran,
@@ -1288,6 +1631,52 @@ int main()
 	       ran, (unsigned)avg, (unsigned)min_us, (unsigned)max_us, over,
 	       speed_x10 / 10, speed_x10 % 10, (unsigned)total_samples,
 	       (unsigned)video_crc, (unsigned)audio_crc);
+
+#ifdef GB_STATE_TEST
+	{
+		/* The refusals first: another cartridge's state, and the state with
+		 * one byte changed, must not load. */
+		StateHeader &h = *test_slot.header();
+		uint8_t *const byte = test_slot.buf + sizeof(StateHeader) + test_slot.size / 2;
+
+		h.rom_crc ^= 1u;
+		const char *const other = state_refusal(test_slot, rom_crc);
+		h.rom_crc ^= 1u;
+		*byte ^= 0x40u;
+		const char *const changed = state_refusal(test_slot, rom_crc);
+		*byte ^= 0x40u;
+		const bool refuses = other && !strcmp(other, "OTHER GAME") && changed &&
+				     !strcmp(changed, "BAD CRC");
+		const char *const why = state_refusal(test_slot, rom_crc);
+
+		/* Then the frames after the save, again, from the state. */
+		uint32_t replay_video = 0, replay_audio = 0;
+		const uint64_t t0 = ticks();
+		const bool loaded = !why && state_load(test_slot);
+		const uint64_t load_us = to_us(ticks() - t0);
+
+		for (unsigned f = GB_STATE_TEST; loaded && f < ran; f++) {
+			frame_no = f;
+			frame_ptr = nullptr;
+			audio_copy_frames = 0;
+			retro_run();
+			fold_frame(replay_video, replay_audio);
+		}
+		const bool match = loaded && replay_video == test_video &&
+				   replay_audio == test_audio;
+
+		printf("TinyGBC GB STATE AT=%u BYTES=%u SAVE=%llu LOAD=%llu"
+		       " VIDEO=%08x/%08x AUDIO=%08x/%08x %s\n", (unsigned)GB_STATE_TEST,
+		       (unsigned)test_slot.size, (unsigned long long)test_save_us,
+		       (unsigned long long)load_us, (unsigned)test_video,
+		       (unsigned)replay_video, (unsigned)test_audio,
+		       (unsigned)replay_audio,
+		       !refuses ? "REFUSALS FAILED" : why ? why :
+		       !loaded ? "LOAD FAILED" : match ? "MATCH" : "DIFFER");
+		if (!refuses || !match)
+			return 1;
+	}
+#endif
 
 #ifdef GB_PAD_OUT
 	/* The register map's buses are zero based: bus 0 is PMOD0's Digilent
