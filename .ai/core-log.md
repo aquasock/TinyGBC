@@ -1181,3 +1181,33 @@ None.
 - User Test: NOT RUN
 
 ---
+
+## 36 COMMIT Unreleased 2026-10-27T11:12:10-07:00
+
+#### Coming From:
+
+Unreleased 39f8370
+
+#### Purpose:
+
+Record the user's acceptance of the picture settings and of the repaired launch, which entry 35 could only carry as not run.
+
+#### Outcome:
+
+The user launched games from the TinyGBC window and passed the cycle, so the picture settings work end to end and the launch entry 33 recorded as broken is repaired. Read back with the shell's `cat`, `/tinygbc.ini` holds `[input]` with the user's mapping, then `[video]` with `palette = light` and `colour = accurate`, then `[audio]` with the volume at 20: the two picture keys are ones the Video page wrote, since neither was in the file before this cycle, and the sections around them kept their content and their order, which is the writer's rule that it rewrites only its own sections and keeps every other line. The player is `427083b4...` at 3,249,096 bytes and the TinyTang firmware `b8768a6-dirty.e0c2ba0`, the pair entry 35 put on the board; the console evidence there, from the settings request through the state request and `VIDEO PALETTE=Off COLOUR=Off`, stands as the mechanism, and this entry adds the user's own play as the acceptance. No repository file changed in this cycle beyond the log. The core-syntax audit re-read `.ai/core.md` and `.ai/core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `.ai/core.md` was not changed and entries 1 to 35 were not rewritten, and validated this entry as number 36 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and `None.` in Files Modified.
+
+#### Next Steps:
+
+The picture is the user's to tune; the palette and the colour correction apply from the next game start and need no further work. Three items stand in the order they cost time: a paced console run reaches its first frame and then makes no frames, which blocks the shell after every console test and is the last thing that made this cycle expensive to verify; entry 26's silent clock on a launch after a replug; and the left stick. Entry 29's Oracle of Seasons baseline is still unrecorded.
+
+#### Files Modified:
+
+None.
+
+#### Status:
+
+- Build: PASS
+- Deployment: PASS
+- User Test: PASS
+
+---
