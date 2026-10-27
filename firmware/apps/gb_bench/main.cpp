@@ -1162,7 +1162,7 @@ int play_main()
 	const size_t state_size = (size_t)(gb_state_end - gb_state);
 	if (state_size && !retro_unserialize(gb_state, state_size)) {
 		printf("TinyGBC GB STATE FAILED\n");
-		return 1;
+		return 4;
 	}
 	if (state_size)
 		printf("TinyGBC GB STATE=%u LOADED\n", (unsigned)state_size);
@@ -1310,6 +1310,19 @@ int main()
 	}
 
 #ifdef GB_CART
+	/* The settings come first, before the cartridge and before the core
+	 * loads, for two reasons. The core reads its options while loading and
+	 * never asks whether they changed, so they must be in place by then. And
+	 * asking here keeps the transfer off the end of the cartridge's own: the
+	 * loader has just finished streaming a megabyte, and a second 24-byte
+	 * request landing straight after it is the one thing this order cannot
+	 * do. Nothing in the blob depends on the cartridge. */
+	receive_settings();
+	printf("TinyGBC GB SETTINGS VOL=%u%s%s\n", (unsigned)host_settings.volume,
+	       host_settings.mute ? " MUTED" : "",
+	       host_settings.utc > 0 ? " DATED" : "");
+	fflush(stdout);
+
 	size_t rom_size = 0;
 	const uint8_t *cart = receive_cart(rom_size);
 
@@ -1326,13 +1339,9 @@ int main()
 	const uint8_t *cart = gb_rom;
 #endif
 
+
 #ifdef GB_CART
-	/* The settings come before the core loads, because the core reads its
-	 * options while loading and never asks whether they changed: the palette
-	 * and the colour correction are decided there, not per frame. Nothing in
-	 * the blob depends on the cartridge, so asking this early costs nothing
-	 * but the order of two lines. */
-	receive_settings();
+	/* The settings were taken at the top of this function; nothing to do here. */
 #endif
 
 	uint64_t t0 = ticks();
@@ -1353,14 +1362,26 @@ int main()
 	info.data = cart;
 	info.size = rom_size;
 
+	/* Each step of the way to the first frame says so, because a launch that
+	 * dies has to be traceable from one console line: this program's own
+	 * output is the only thing a failed run leaves behind. */
+	printf("TinyGBC GB LOADING ROM=%u CGB=%u\n", (unsigned)rom_size, cgb);
+	fflush(stdout);
 	if (!retro_load_game(&info)) {
-		printf("TinyGBC GB LOAD FAILED ROM=%u\n", (unsigned)rom_size);
-		return 1;
+		printf("TinyGBC GB LOAD FAILED ROM=%u CRC=%08x HEAD=%02x%02x%02x%02x\n",
+		       (unsigned)rom_size, (unsigned)rom_crc,
+		       rom_size > 0 ? cart[0] : 0, rom_size > 1 ? cart[1] : 0,
+		       rom_size > 2 ? cart[2] : 0, rom_size > 3 ? cart[3] : 0);
+		/* Exit codes a launcher can show, and the only thing a failed
+		 * launch leaves that anyone can read: 1 the cartridge never
+		 * arrived, 3 the core refused it, 4 the embedded state would not
+		 * load. */
+		return 3;
 	}
 	const size_t state_size = (size_t)(gb_state_end - gb_state);
 	if (state_size && !retro_unserialize(gb_state, state_size)) {
 		printf("TinyGBC GB STATE FAILED\n");
-		return 1;
+		return 4;
 	}
 	uint64_t start_us = to_us(ticks() - t0);
 

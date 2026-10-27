@@ -1121,3 +1121,33 @@ None.
 - User Test: FAIL
 
 ---
+
+## 34 COMMIT Unreleased 2026-10-27T10:51:25-07:00
+
+#### Coming From:
+
+Unreleased 7295684
+
+#### Purpose:
+
+Remove the one ordering artifact the failing build introduced and make a failed launch describe itself, done offline because the board is the user's and nothing may connect to it.
+
+#### Outcome:
+
+Two things were established without the board. The option answering is not what makes the core refuse a cartridge: the same `gb_environment`, answering the same four keys, loads and runs uCity and Super Mario Land on the PC, and both recorded baselines are untouched, `VIDEO=aaddaa41 AUDIO=a36b5633` and `TinyGBC GB DISPLAY FB=d6e86438`. And the mystery entry 33 left, that `ae350run` printed nothing to the console after about 10:36 where it had printed its whole boot an hour earlier, is explained and was not a fault at all: with TinyDesk running, `tdsh_printf` writes into the desktop's terminal rather than the USB console, so the player's error text was on the board's screen the whole time and only my reader could not see it. The one thing the failing build did that no working build had done is put the twenty-four byte settings transfer immediately after the cartridge's megabyte, so `receive_settings()` now runs before `receive_cart()`: the settings still come before `retro_load_game`, which is the requirement the core imposes, but they no longer land on the tail of a long transfer. A failed launch now says where it failed. The player prints `TinyGBC GB SETTINGS VOL=<n>` once the host has answered, `TinyGBC GB LOADING ROM=<bytes> CGB=<0|1>` before the core is asked to take the cartridge, and on refusal `TinyGBC GB LOAD FAILED ROM=... CRC=... HEAD=<the first four bytes>`; and it exits 1 when the cartridge never arrived, 3 when the core refused it and 4 when the embedded state would not load, so the `gbc: done (N)` a launch leaves in the desktop's terminal names the cause on sight. The player built as 3,249,096 bytes with SHA-256 `427083b44bf9c0999f5b0f0845867008c112ca5cf9488692049887ab6a86381e`, the same over two builds, and both it and the host build compile clean under `-Wall -Wextra -Werror`; `tools/test_pad_map.sh`, `tools/test_video_options.sh` and `tools/test_cart_zip.sh` all pass. None of this has been on hardware, and the reordering is a hypothesis rather than a proven repair: if a launch still fails, the new lines say whether it died before the settings arrived, at the load, or after it. The user took the board at 10:52 and asked that nothing connect to it; no console process has run since. The core-syntax audit re-read `.ai/core.md` and `.ai/core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `.ai/core.md` was not changed and entries 1 to 33 were not rewritten, and validated this entry as number 34 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and only eligible path in Files Modified.
+
+#### Next Steps:
+
+One board run settles it, and it should be a single launch of a plain `.gbc` with this player deployed: if `TinyGBC GB SETTINGS` never appears the fault is in the program's own start before any transfer, if `LOADING` appears and then `LOAD FAILED` the header bytes name what reached the core, and if the game starts the ordering was the cause and entry 31's move was simply too close to the cartridge stream. Read the lines in the desktop's Terminal when the launch comes from the window, or on the console when it comes from the shell, and read `gbc: done (N)` for the exit code. Only after that should the palette and colour rows be judged, since a build that cannot start a game says nothing about them. The tooling lesson from entry 33 stands: a `tangload` must not be interrupted, and nothing else in this cycle should be attempted until the launch works.
+
+#### Files Modified:
+
+- firmware/apps/gb_bench/main.cpp
+
+#### Status:
+
+- Build: PASS
+- Deployment: NOT RUN
+- User Test: NOT RUN
+
+---
