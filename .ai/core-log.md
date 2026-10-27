@@ -1331,3 +1331,33 @@ None.
 - User Test: N/A
 
 ---
+
+## 41 COMMIT Unreleased 2026-10-27T13:49:26-07:00
+
+#### Coming From:
+
+Unreleased bd518a3
+
+#### Purpose:
+
+Hand the live state of this project to the next agent, after a session that carried the port from a working player to a picture-setting page, a repaired launch and a kept cartridge clock.
+
+#### Outcome:
+
+What is on the board now, all of it accepted by the user: TinyTang firmware `86d2424-dirty.455db9f` at 648,960 bytes and SHA-256 `d050eec1184842cedd1fde88278ecbfb1b758cf9e61890c94e59be68dabbcc43`, the player `62f475c934f2958db6c1b44d3975c79e607a081b971cc11c06c8c19034c684e0` at 3,249,256 bytes at `/root/ae350/tinygbc-play.elf`, and `/tinygbc.ini` holding the user's own choices: `[input]` with `b = y` and `a = b`, `[video]` with `palette = light` and `colour = accurate`, `[audio]` at volume 20. The desktop core was reloaded last, the FPGA answers `core 84` on its link, and the console was on `/dev/ttyACM0` when this was written. What this session established, each with its own entry: the pad's buttons are rebound from the window and kept in `[input]` (entries 30, 36); the picture's palette and colour correction reach gambatte as core options asked for before the core loads (entries 31, 36); that ordering broke every launch for an hour when the settings request sat on the tail of the cartridge transfer, which entry 34 repaired by asking before the cartridge and entry 35 confirmed on the console; the board's clock is read while the desktop core still owns the I2C bus, so a cartridge's clock is kept even on a session started straight after a power cycle, which entries 37 and 38 record and `/root/saves/last.log` shows as `want clock: sent ...` followed by `finish ...rtc: ... whole`; and `tests/gb_bench_expected.txt` was re-recorded from the PC and the A25 against the artifacts actually measured, replacing an Oracle of Seasons figure that no build of this tree ever produced (entry 39). Four facts cost time and are worth carrying. A `tangload` must never be interrupted: this image takes about thirty-five seconds, and a load cut at twenty leaves the FPGA half configured, which shows as the fabric's colour bars and no AE350 at all. `fpga` answers only on the desktop core and is silent on this tree's, so its silence is not a broken bitstream (entry 40). With TinyDesk running, `tdsh_printf` writes into the desktop's terminal rather than the USB console, so a program's output during a window launch is on the screen, not on the wire. And the console's device node moves between boots -- `/dev/ttyACM0`, `2` and `1` were all seen today -- so the tools' `--port` is needed and they refuse safely when it is wrong. Nothing is uncommitted in this tree. TinyTang carries another agent's work in progress under `fpga/desktop/`, and its own entries 49 to 58 record this session's half there. The core-syntax audit re-read `.ai/core.md` and `.ai/core-syntax.md`, inspected the complete `.ai/` diff, confirmed that `.ai/core.md` was not changed and entries 1 to 40 were not rewritten, and validated this entry as number 41 of 100 with exactly six sections, prose in Purpose, Outcome and Next Steps, allowed Status values and `None.` in Files Modified.
+
+#### Next Steps:
+
+One fault comes before any feature: a paced console run reaches its first frame and then produces no `F=` lines, which blocks the shell after every console test and made this session expensive to verify. Then the work the user chose, in their order: auto-resume, loading the card's state at launch instead of waiting for HOME with R, which is a few lines and the biggest daily convenience; recently played and favourites in the Library, together with the 56-byte name cap that silently hides long cartridge names (TinyTang's entry 23); frame blending through `gambatte_mix_frames` and the wider palette list the core already carries, including `SGB`, both of which are one more key in the settings blob; a `tools/test_gb_bench.sh` that builds each PC variant, runs it and diffs `VIDEO`, `AUDIO` and `SAMPLES` against `tests/gb_bench_expected.txt`, which is read by no tool today; fast-forward on a held button; cheats through the core's `retro_cheat_set`; more than one save state per cartridge; and last the link cable, which needs `HAVE_NETWORK` to stop being zero and a second machine, and is the one genuine Game Boy feature still absent. Not to be attempted: an aspect setting (the picture is square-pixel and five by five is its own aspect), a boot ROM that cannot be shipped, and Game Boy Advance.
+
+#### Files Modified:
+
+None.
+
+#### Status:
+
+- Build: N/A
+- Deployment: N/A
+- User Test: N/A
+
+---
