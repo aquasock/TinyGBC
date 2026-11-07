@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 // SDRAM back end for the AE350 RAM port: one 16-bit Winbond W9825G6KH-6
 // (32 MiB: 4 banks of 8192 rows of 512 columns) on the dock's J9 connector,
 // run from the bus clock. ahb_ram's front end hands it one 64-bit transfer

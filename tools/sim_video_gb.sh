@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-2.0-only
 #
 # Simulates the retargeted video unit and checks the frame it draws. Run from
 # anywhere: the testbench reads the desk font by a path relative to the

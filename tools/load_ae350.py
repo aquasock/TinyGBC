@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-2.0-only
 """Load a program into the TinyGBC AE350 SDRAM over the UART and run it.
 
 Waits for the boot ROM's "TinyGBC LOAD" line, sends the ELF file's loadable

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT
+/* SPDX-License-Identifier: GPL-2.0-only
  *
  * Memory tests shared by the boot ROM and runtime programs. Each records the
  * number of mismatches and the first one in a struct tn_result. A cached test

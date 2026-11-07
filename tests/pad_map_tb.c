@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT
+/* SPDX-License-Identifier: GPL-2.0-only
  *
  * The pad mapping, driven on the PC: tools/test_pad_map.sh builds this against
  * firmware/include/tinygbc_pad.h and fails on any check. What it pins is that

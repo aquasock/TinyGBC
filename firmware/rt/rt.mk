@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-2.0-only
 #
 # Build rules for TinyGBC AE350 runtime programs: C and C++ (exceptions and
 # RTTI on) with newlib and libstdc++, linked to run from the SDRAM after the

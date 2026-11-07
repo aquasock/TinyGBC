@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 // Fabric registers in the AE350's uncached EXTS window, and the FPGA UART
 // (8N1) they drive. Offsets from 0xe8000000:
 //   0x00  write: byte to transmit (bits 7:0). The transfer waits while the

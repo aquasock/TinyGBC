@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT
+/* SPDX-License-Identifier: GPL-2.0-only
  *
  * A Game Boy cartridge sent as a .zip holding one .gb or .gbc (cart_zip.c).
  */

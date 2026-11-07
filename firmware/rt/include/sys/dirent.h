@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT
+/* SPDX-License-Identifier: GPL-2.0-only
  *
  * Stands in for newlib's <sys/dirent.h>, which refuses to build, so that
  * <dirent.h> declares the directory calls. Runtime programs have no

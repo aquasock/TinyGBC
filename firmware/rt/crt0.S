@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT
+/* SPDX-License-Identifier: GPL-2.0-only
  *
  * Entry of a runtime program, jumped to by the boot ROM loader with the
  * caches on and the image in the SDRAM. Sets the global and stack pointers

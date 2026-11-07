@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT
+/* SPDX-License-Identifier: GPL-2.0-only
  *
  * TinyGBC AE350 boot ROM program. It checks the fabric registers in the EXTS
  * window and tests the block RAM and the SDRAM on the RAM port with the A25

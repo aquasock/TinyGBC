@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 //
 // Checks ahb_sdram's video line fetch against a behavioural SDRAM: a 160
 // halfword line arrives with its indexes in order and one vdone, every word

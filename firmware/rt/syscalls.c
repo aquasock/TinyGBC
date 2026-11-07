@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT
+/* SPDX-License-Identifier: GPL-2.0-only
  *
  * The newlib system calls for runtime programs: standard output and error go
  * to the UART (\n sent as \r\n), standard input reads it, the heap runs from

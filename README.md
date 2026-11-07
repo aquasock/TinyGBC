@@ -303,14 +303,40 @@ and the user passed it with both controller paths (entry 23).
 
 ## Licensing
 
-This project's code is MIT. gambatte is GPL-2.0 and is fetched, never vendored:
-`tools/fetch_gambatte.sh` pins the commit and `third_party/` is git-ignored, so
-only patches to the core would be carried here. Programs built from it,
-including `gb_bench`, are GPL-2.0 and stay in `build/`. The benchmark
-cartridge, uCity, is GPL-3.0 and is fetched the same way.
+TinyGBC is **GPL-2.0-only**; the text is in `LICENSE`, and every file this
+project wrote says so in its `SPDX-License-Identifier` header.
 
-The one third-party file carried in this tree is libretro-common's raw DEFLATE
-decoder (MIT, RetroArch team): three files under
+Version 2 rather than version 3 is not a preference, and it is worth stating
+why because a sibling core in this family moved the other way on the same day.
+The emulator this project's programs link is gambatte, whose notices read
+"GNU General Public License version 2 as published by the Free Software
+Foundation" — 64 of its files carry the licence, "version 2" appears 189
+times, and "any later version" appears in none of those notices — its only two
+occurrences in the checkout are in the GPL-2 text's own boilerplate. A work
+built from GPL-2.0-only code cannot be conveyed under GPL-3, so GPL-3 was
+never available here, and `tools/fetch_gambatte.sh` has described the core as
+GPL-2.0 since it was written. gambatte is fetched, never vendored: `tools/fetch_gambatte.sh`
+pins the commit and `third_party/` is git-ignored. Programs built from it,
+including `gb_bench`, are GPL-2.0 and stay in `build/`. The benchmark
+cartridge, uCity, is GPL-3.0 and is fetched the same way; it is a cartridge the
+emulator runs rather than code linked beside it, so the two licences meet as
+separate works and no obligation runs between them.
+
+Two files keep their MIT identifier rather than joining the rest. `tools/fs_to_bin.py`
+is TinyTang's converter copied verbatim with its own notice, and TinyTang
+remains MIT. `firmware/common/cart_zip.c` is TinyNES's `cart_zip.c` with its
+checks kept and its cartridge test widened, and TinyNES has since become
+GPL-3.0-only — so this copy stays MIT precisely because that is the grant it
+was taken under, an MIT licence being irrevocable once granted, and because
+re-stating it as GPL-2.0-only would claim a downward relicense from GPL-3 that
+is not on offer. The practical consequence is recorded rather than hidden: this
+file may not be re-synced from TinyNES's current tree without bringing GPL-3.0
+in with it, which this repository cannot carry. MIT is compatible with
+GPL-2.0-only, so both files sit under the repository licence without any
+change to what is granted.
+
+The other third-party files carried in this tree are libretro-common's raw
+DEFLATE decoder (MIT, RetroArch team): three files under
 `firmware/third_party/libretro-common/` whose own licence headers are intact
 and whose provenance that folder's README gives. It is here because gambatte's
 copy of libretro-common is trimmed to what the core draws on and has no

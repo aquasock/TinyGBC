@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-2.0-only
 #
 # The picture settings' core options, on the PC. Two things have to be true and
 # neither can be seen from the player alone: every setting names a value, and

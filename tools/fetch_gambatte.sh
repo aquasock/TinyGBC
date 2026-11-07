@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-2.0-only
 #
 # Fetches the libretro gambatte core (GPL-2.0) at a pinned commit into
 # third_party/gambatte-libretro, which git ignores. TinyGBC carries patches

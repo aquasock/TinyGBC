@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 // A silent-audio door into hdl-util's HDMI transmitter.
 //
 // hdmi.sv takes its samples as an unpacked array port, and this project reads

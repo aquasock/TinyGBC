@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 // The AE350's 64-bit RAM AHB port (DDR_H*): block RAM at BASE for BYTES
 // bytes, and the SDRAM at SDRAM_BASE for SDRAM_BYTES bytes through the
 // ahb_sdram back end (sd_* below). A data transfer to any other address

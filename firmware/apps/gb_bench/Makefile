@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-2.0-only
 #
 # Game Boy Color throughput benchmark: gambatte's libretro core, fetched by
 # tools/fetch_gambatte.sh, driven by main.cpp as the frontend, with a

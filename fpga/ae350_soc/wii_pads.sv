@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 // Four Wii extension controllers (Classic Controller, Classic Controller Pro),
 // each on its own I2C bus, polled by fabric so the CPU only reads registers.
 // Each bus has its own master, open-drain on two pins (it only pulls low, and

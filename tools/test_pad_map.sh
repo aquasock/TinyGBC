@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-2.0-only
 #
 # The pad mapping on the PC (firmware/include/tinygbc_pad.h), which the player
 # shares with this test, so a mapping fault is a failure here rather than a

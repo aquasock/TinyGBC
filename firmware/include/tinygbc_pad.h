@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT
+/* SPDX-License-Identifier: GPL-2.0-only
  *
  * The pad's decode, apart from the registers that carry it: which controller
  * button answers to each Game Boy button. The player fills the two report

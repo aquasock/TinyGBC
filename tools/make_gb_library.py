@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-2.0-only
 """Build a Game Boy cartridge library in the shape the card's NES one has.
 
 The NES library on the card (`/root/media/nes`) is one folder per first

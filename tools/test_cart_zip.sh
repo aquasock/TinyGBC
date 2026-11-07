@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-2.0-only
 #
 # The player's zip reader on the PC (firmware/common/cart_zip.c) over archives
 # this script makes for itself, so the test depends on nothing but the fetched

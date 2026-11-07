@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 // Stereo I2S output for a Pmod I2S2's CS4344 DAC, with a sample FIFO the CPU
 // fills through registers.
 //

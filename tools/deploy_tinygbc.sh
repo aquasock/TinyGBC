@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-2.0-only
 #
 # Put this tree's AE350 SoC image on the board's card and program the FPGA
 # with it, through TinyTang's shell on the two-wire console.

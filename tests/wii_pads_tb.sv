@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 `timescale 1ns/1ps
 
 // A byte-level Wii extension on an open-drain bus. It checks the command

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT
+/* SPDX-License-Identifier: GPL-2.0-only
  *
  * TinyGBC AE350 boot ROM: code and constants in the 32 KiB block-RAM ROM on
  * the ROM port at the reset vector; .data, .bss and the stack in the 64 KiB

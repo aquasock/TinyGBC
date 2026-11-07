@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 // HDMI (DVI) video for the A25: two 160x144 15-bit colour frame buffers in
 // the SDRAM, shown at 1280x720 60 Hz with each Game Boy pixel five rows tall
 // and five columns wide, the authentic 800x720 picture centred between black

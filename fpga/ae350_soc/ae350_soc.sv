@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 // TinyNES AE350 system: the A25 boots C firmware from a block-RAM ROM on the
 // ROM port (ahb_boot_rom), keeps its data and stack in block RAM on the RAM
 // port at 0x60000000 (ahb_ram), has the dock's 32 MiB SDRAM on J9 at

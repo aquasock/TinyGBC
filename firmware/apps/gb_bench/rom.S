@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT
+/* SPDX-License-Identifier: GPL-2.0-only
  *
  * The cartridge image named by ROM= at build time, copied to GB_ROM_FILE.
  * GNU as on both the AE350 and the PC build.

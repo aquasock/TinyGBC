@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-2.0-only
 """Build design variants over many nextpnr seeds in parallel and tabulate them.
 
 A design's optional "prebuild" commands (argv lists, run from the repository

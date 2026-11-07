@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 // The FPGA UART's link mode: TinyNES speaking TinyTang's frame protocol on
 // the line the boot ROM loads programs over, so that TinyTang can draw
 // TinyDesk over a running game (TinyTang's desk layer, record PROT-010 in

@@ -1361,3 +1361,84 @@ None.
 - User Test: N/A
 
 ---
+
+## 42 COMMIT Unreleased 2026-11-07T09:23:36-07:00
+
+#### Coming From:
+
+Unreleased 98a05d5
+
+#### Purpose:
+
+Give TinyGBC a licence, which it has never had, at GPL-2.0-only because the emulator it links is GPL-2.0-only and version 3 was never available to it.
+
+#### Outcome:
+
+The repository has a `LICENSE` for the first time: the FSF GPL-2 text verbatim, and 50 of the 52 files that carried `SPDX-License-Identifier: MIT` now say `GPL-2.0-only`. Before this cycle the repository had no licence file at all, which is a stricter state than either option considered — default copyright grants nothing, so nobody could lawfully fork or ship it, and the MIT identifiers in its headers granted more than the tree as a whole did. The version was decided by evidence rather than preference, and the README now records the evidence because the decision runs opposite to the sibling cores moved the same day: gambatte, the emulator every TinyGBC program links, is GPL-2.0-only. Sixty-four of its files carry the licence, "version 2" appears 189 times across them, and "any later version" appears in none of those notices — the only two occurrences in the whole checkout are in the GPL-2 text's own boilerplate, which offers nothing; `tools/fetch_gambatte.sh` has called the core GPL-2.0 since it was written. A work built from GPL-2.0-only code cannot be conveyed under GPL-3, so GPL-3 was not an option here and choosing it would have been a licensing violation rather than a preference. Two files keep MIT deliberately and the README says why for each. `tools/fs_to_bin.py` is TinyTang's converter copied verbatim with its notice and TinyTang remains MIT. `firmware/common/cart_zip.c` is TinyNES's `cart_zip.c` with its checks kept and its cartridge test widened, and that repository became GPL-3.0-only in its entry 56 on the same day — so this copy stays MIT because MIT is the grant it was taken under and an MIT grant is irrevocable once given, and because restating it as GPL-2.0-only would assert a downward relicense from GPL-3 that no one offered. That leaves a consequence worth carrying rather than discovering later: this file cannot be re-synced from TinyNES's current tree without importing GPL-3.0, which a GPL-2.0-only repository cannot carry, so future work on it has to be done here rather than merged from there. Both files are MIT, which GPL-2.0-only accepts, so neither weakens the repository licence. The four statements that became false in the README's Licensing section were replaced with the reasoning above: that "this project's code is MIT", that gambatte's GPL-2.0 status was only about how it is fetched, that only patches would ever be carried, and that a single third-party file was in the tree. Verification matched the change: `git diff -U0` over every source file shows no changed line other than an `SPDX-License-Identifier` line, so no expression, port, parameter or command moved; and all three test scripts pass, `tools/test_cart_zip.sh`, `tools/test_pad_map.sh` and `tools/test_video_options.sh`, the first of which compiles `cart_zip.c` from this tree and the third of which reads the fetched gambatte core to prove the option keys are ones it recognises. The twelve changed shell and Python files pass `bash -n` and `py_compile`. No bitstream was built and nothing was deployed, because a licence header cannot alter a netlist. The core-syntax audit re-read `.ai/core.md` and `.ai/core-syntax.md`, inspected the complete `.ai/` diff and confirmed it adds this entry and nothing else, that `.ai/core.md` was not changed and that entries 1 to 41 were not rewritten, and validated this entry as entry 42 with six sections in order, a one-sentence Purpose, prose Outcome and Next Steps, eligible Files Modified paths, permitted Status values, no self-referencing hash and a count of forty-two against the 100-entry limit.
+
+#### Next Steps:
+
+The licence is settled and nothing further is owed on it, but the same pass has one loose end that belongs to the family rather than to this repository: because TinyNES moved to GPL-3.0-only while TinyGBC must stay GPL-2.0-only, the shared files between them — `cart_zip.c` today, and anything else borrowed since — can only flow one way, from here into a GPL-2 tree never from a GPL-3 one, so a future cycle that changes `cart_zip.c` should make the change in TinyNES only if TinyGBC is prepared to take GPL-3, and otherwise here. The remaining unlicensed cores are the larger piece of work: TinyGBA, TinyMaps, TinyVCMI, TinyPetz and TinyControl have no licence file, and each needs its own provenance read before a version can be chosen, exactly as this one did, because choosing a version without knowing what the core links is how a repository ends up asserting a licence its dependencies forbid. Nothing else in this repository changed: the Wii pad path, the seed-11 image and the two controller paths proven in entries 22 and 23 are as they were.
+
+#### Files Modified:
+
+- LICENSE
+- README.md
+- firmware/apps/gb_bench/Makefile
+- firmware/apps/gb_bench/main.cpp
+- firmware/apps/gb_bench/rom.S
+- firmware/apps/gb_bench/state.S
+- firmware/boot/Makefile
+- firmware/boot/crt0.S
+- firmware/boot/link.ld
+- firmware/boot/load.c
+- firmware/boot/load.h
+- firmware/boot/main.c
+- firmware/common/cart_zip.h
+- firmware/common/memtest.c
+- firmware/common/memtest.h
+- firmware/common/uart.c
+- firmware/common/uart.h
+- firmware/include/tinygbc.h
+- firmware/include/tinygbc_pad.h
+- firmware/include/tinygbc_video.h
+- firmware/rt/crt0.S
+- firmware/rt/include/sys/dirent.h
+- firmware/rt/link.ld
+- firmware/rt/rt.mk
+- firmware/rt/syscalls.c
+- fpga/ae350_soc/ae350_soc.sv
+- fpga/ae350_soc/ahb_boot_rom.sv
+- fpga/ae350_soc/ahb_ram.sv
+- fpga/ae350_soc/ahb_sdram.sv
+- fpga/ae350_soc/desk_link.sv
+- fpga/ae350_soc/exts_uart.sv
+- fpga/ae350_soc/i2s_out.sv
+- fpga/ae350_soc/tb/sdram_video_tb.sv
+- fpga/ae350_soc/tb/video_gb_tb.sv
+- fpga/ae350_soc/video.sv
+- fpga/ae350_soc/wii_pads.sv
+- fpga/hdmi/hdmi_silent.sv
+- tests/pad_map_tb.c
+- tests/video_options_tb.c
+- tests/wii_pads_tb.sv
+- tools/build_ae350_soc.sh
+- tools/deploy_tinygbc.sh
+- tools/fetch_gambatte.sh
+- tools/fetch_ucity.sh
+- tools/load_ae350.py
+- tools/make_gb_library.py
+- tools/sim_sdram_video.sh
+- tools/sim_video_gb.sh
+- tools/sweep.py
+- tools/test_cart_zip.sh
+- tools/test_pad_map.sh
+- tools/test_video_options.sh
+
+#### Status:
+
+- Build: N/A
+- Deployment: N/A
+- User Test: N/A
+
+---

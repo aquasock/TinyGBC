@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT
+/* SPDX-License-Identifier: GPL-2.0-only
  *
  * TinyGBC AE350 runtime programs, loaded into the SDRAM by the boot ROM:
  * code, data, .bss and the heap (from _end to __heap_end) in the SDRAM below

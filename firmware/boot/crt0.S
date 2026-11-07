@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT
+/* SPDX-License-Identifier: GPL-2.0-only
  *
  * Reset entry at 0x80000000. The caches are left as they come out of reset
  * (disabled); main turns them on. Sets the global and stack pointers and the

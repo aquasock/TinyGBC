@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT
+/* SPDX-License-Identifier: GPL-2.0-only
  *
  * Registers the fabric decodes in the AE350's uncached EXTS window
  * (fpga/ae350_soc/exts_uart.sv, video.sv and wii_pads.sv), the memory map, the A25 cache controls and

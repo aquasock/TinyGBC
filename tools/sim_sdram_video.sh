@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-2.0-only
 #
 # Simulates the SDRAM controller's video line fetch against a behavioural
 # SDRAM and checks a whole 160 halfword line, its indexes, its data and a CPU

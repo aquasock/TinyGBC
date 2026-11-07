@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 //
 // gb_bench: runs the gambatte Game Boy Color emulator on a cartridge image
 // built into the program, with a scripted controller, and times each emulated

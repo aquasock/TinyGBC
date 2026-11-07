@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT
+/* SPDX-License-Identifier: GPL-2.0-only
  *
  * The picture settings, as the core options gambatte reads them. The player
  * cannot reach gambatte's palette machinery any other way: the fabric's

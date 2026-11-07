@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT
+/* SPDX-License-Identifier: GPL-2.0-only
  *
  * The picture settings on the PC: that every palette and colour correction
  * names a value, that the four keys are answered and nothing else is, and that

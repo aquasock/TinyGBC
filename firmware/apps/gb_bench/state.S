@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT
+/* SPDX-License-Identifier: GPL-2.0-only
  *
  * The savestate named by STATE= at build time, copied to GB_STATE_FILE. It is
  * empty when STATE is not set, and gb_bench then skips loading it. GNU as on

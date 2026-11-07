@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 //
 // Drives a known Game Boy frame through the retargeted video unit and checks
 // what reaches its RGB output.

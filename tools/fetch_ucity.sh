@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-2.0-only
 #
 # Fetches µCity 1.3 (GPL-3.0), a Game Boy Color city builder by AntonioND, as
 # the benchmark cartridge: a Color Game Boy image that is a real game rather
