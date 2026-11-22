@@ -19,6 +19,16 @@
 //                 the background, each a big-endian 15-bit {b, g, r} of five
 //                 bits each. A cell past the last is dropped.
 //   0x15 b        the layer's enable, bit 0 of b.
+//   0x09 h1 h2    TinyTang's Bluetooth pads, two big-endian words in
+//                 TinyTang's pad order (tang_pad.h): B 0x001, Y 0x002, SELECT
+//                 0x004, START 0x008, up 0x010, down 0x020, left 0x040, right
+//                 0x080, A 0x100, X 0x200, L 0x400, R 0x800 and HOME 0x1000,
+//                 active high, given to the CPU as pads (h2 in bits 31:16).
+//                 TinyTang sends them every 40 ms or so while a button is held
+//                 and once when all are released, so both are let go after
+//                 HOLD_CLOCKS without one, or when link mode ends, and a
+//                 button can never stay held because the frames stopped. A
+//                 frame shorter than four bytes changes nothing.
 // Every other type is skipped by its length. The layer is shown while the
 // link, the overlay and the enable are all on (layer_on); leaving link mode
 // clears the overlay, the enable and the cursor.
@@ -36,6 +46,14 @@
 //                 flips its overlay on LB's rising edge, reading the newest
 //                 report every 40 ms or so, so LB is held long enough for one
 //                 of its reads to see it. j2 is 0.
+//   0x21 r0 r1 r2 r3 r6 r7
+//                 Wii controller 1's last format-3 report as it sent it: the
+//                 four 8-bit stick axes LX, RX, LY, RY, then the two button
+//                 bytes, active low (wii_pads.sv), at every report tick while
+//                 a Classic Controller is present and has reported, in link
+//                 mode only, so TinyTang can drive TinyDesk with it as it
+//                 does with the pad it reads itself. Its absence for a while
+//                 tells TinyTang there is none.
 //   TEXT_TYPE     the CPU's text: bytes it writes in link mode are kept until
 //                 a line feed, TEXT_MAX bytes, TEXT_IDLE_CLOCKS without one, or
 //                 a flush, then sent as one frame. While a frame of text is
@@ -48,7 +66,8 @@ module desk_link #(
     parameter integer REFRESH_REPORTS = 25,
     parameter integer TAP_REPORTS = 13,
     parameter integer TEXT_MAX = 128,
-    parameter integer TEXT_IDLE_CLOCKS = 150000 // 2 ms
+    parameter integer TEXT_IDLE_CLOCKS = 150000, // 2 ms
+    parameter integer HOLD_CLOCKS = 18750000     // 250 ms
 ) (
     input  wire        clk,
     input  wire        resetn,
@@ -70,6 +89,11 @@ module desk_link #(
     // Classic Controller 1's buttons, report bytes 4 and 5 (byte 4 in bits
     // 7:0), active high, or 0 when no Classic Controller is present.
     input  wire [15:0] pad_held,
+    // The same controller's last format-3 report (wii_pads.sv pad0_report):
+    // bytes 0 to 3 in bits 31:0, byte 0 in 7:0, bytes 6 and 7 in 47:32, and
+    // whether it is a present Classic Controller that has reported.
+    input  wire [47:0] wii_report,
+    input  wire        wii_valid,
 
     // One cell write to the layer: held until cell_ready.
     output reg         cell_valid,
@@ -80,7 +104,9 @@ module desk_link #(
     // Bit 0 layer_on, bit 1 the overlay, bit 2 the enable, bit 3 a cell
     // was lost (sticky), bits 15:8 frames received, bits 31:16 cells
     // written (both wrap).
-    output wire [31:0] status
+    output wire [31:0] status,
+    // TinyTang's Bluetooth pads from the last 0x09 frame, {h2, h1}, or 0.
+    output wire [31:0] pads
 );
     localparam integer COLS = 80, ROWS = 45, CELLS = COLS * ROWS;
     localparam integer TA = $clog2(TEXT_MAX);
@@ -103,8 +129,11 @@ module desk_link #(
     reg [7:0] frames = 8'd0;
     reg [15:0] cells = 16'd0;
     reg id_req = 1'b0;
+    reg [31:0] pads_q = 32'd0;
+    reg [$clog2(HOLD_CLOCKS)-1:0] hold = 0;   // clocks the pads are kept for
 
     assign layer_on = link && overlay && enable;
+    assign pads = pads_q;
     assign status = {cells, frames, 4'd0, lost, enable, overlay, layer_on};
 
     always @(posedge clk or negedge resetn) begin
@@ -123,14 +152,22 @@ module desk_link #(
             cell_valid <= 1'b0;
             cell_addr <= 12'd0;
             cell_data <= 37'd0;
+            pads_q <= 32'd0;
+            hold <= 0;
         end else begin
             if (cell_valid && cell_ready)
                 cell_valid <= 1'b0;
+            if (hold != 0)
+                hold <= hold - 1'b1;
+            else
+                pads_q <= 32'd0;
             if (!link) begin
                 p <= P_MAGIC;
                 overlay <= 1'b0;
                 enable <= 1'b0;
                 cursor <= 12'd0;
+                pads_q <= 32'd0;
+                hold <= 0;
             end else if (rx_valid) begin
                 case (p)
                     P_MAGIC:
@@ -165,6 +202,11 @@ module desk_link #(
                         case (ftype)
                             8'h08: if (nth == 3'd0) overlay <= rx_data[0];
                             8'h15: if (nth == 3'd0) enable <= rx_data[0];
+                            8'h09:
+                                if (nth == 3'd3) begin
+                                    pads_q <= {b2, rx_data, b0, b1};
+                                    hold <= HOLD_CLOCKS - 1;
+                                end
                             8'h13:
                                 // b0 holds x until y arrives; a cell off the
                                 // grid parks the cursor past the last.
@@ -223,28 +265,47 @@ module desk_link #(
     end
 
     // -------------------------------------------------------------- sender --
-    localparam [1:0] K_ID = 2'd0, K_PAD = 2'd1, K_TEXT = 2'd2;
+    localparam [1:0] K_ID = 2'd0, K_PAD = 2'd1, K_TEXT = 2'd2, K_WII = 2'd3;
     reg sending = 1'b0;
     reg [1:0] kind = K_ID;
     reg [8:0] idx = 9'd0;        // byte of the frame being sent
     reg [8:0] last = 9'd0;       // its last byte
     reg gap = 1'b0;              // a clock for txt_q to follow rd_addr
     reg [15:0] j1_frame = 16'd0;
+    reg wii_req = 1'b0;
+    reg [47:0] wii_frame = 48'd0;
 
     assign ln_valid = sending && !gap;
-    assign idle = !sending && !id_req && !pad_req && txt_count == 0;
+    assign idle = !sending && !id_req && !pad_req && !wii_req && txt_count == 0;
 
     reg [7:0] byte_out;
     always @* begin
-        case (idx)
-            9'd0: byte_out = 8'haa;
-            9'd1: byte_out = 8'h00;
-            9'd2: byte_out = kind == K_ID ? 8'd2 : kind == K_PAD ? 8'd5 : last[7:0] - 8'd2;
-            9'd3: byte_out = kind == K_ID ? 8'h01 : kind == K_PAD ? 8'h03 : TEXT_TYPE;
-            9'd4: byte_out = kind == K_ID ? CORE_ID : kind == K_PAD ? j1_frame[15:8] : txt_q;
-            9'd5: byte_out = kind == K_PAD ? j1_frame[7:0] : txt_q;
-            9'd6, 9'd7: byte_out = kind == K_PAD ? 8'h00 : txt_q;
-            default: byte_out = txt_q;
+        if (idx == 9'd0)
+            byte_out = 8'haa;
+        else if (idx == 9'd1)
+            byte_out = 8'h00;
+        else if (idx == 9'd2)
+            byte_out = last[7:0] - 8'd2;        // the type and the payload
+        else case (kind)
+            K_ID:  byte_out = idx == 9'd3 ? 8'h01 : CORE_ID;
+            K_PAD:
+                case (idx)
+                    9'd3: byte_out = 8'h03;
+                    9'd4: byte_out = j1_frame[15:8];
+                    9'd5: byte_out = j1_frame[7:0];
+                    default: byte_out = 8'h00;
+                endcase
+            K_WII:
+                case (idx)
+                    9'd3: byte_out = 8'h21;
+                    9'd4: byte_out = wii_frame[7:0];
+                    9'd5: byte_out = wii_frame[15:8];
+                    9'd6: byte_out = wii_frame[23:16];
+                    9'd7: byte_out = wii_frame[31:24];
+                    9'd8: byte_out = wii_frame[39:32];
+                    default: byte_out = wii_frame[47:40];
+                endcase
+            default: byte_out = idx == 9'd3 ? TEXT_TYPE : txt_q;
         endcase
     end
     assign ln_data = byte_out;
@@ -269,6 +330,8 @@ module desk_link #(
             last <= 9'd0;
             gap <= 1'b0;
             j1_frame <= 16'd0;
+            wii_req <= 1'b0;
+            wii_frame <= 48'd0;
         end else begin
             gap <= 1'b0;
 
@@ -285,9 +348,13 @@ module desk_link #(
                     pad_req <= 1'b1;
                     j1_sent <= j1;
                 end
+                if (link && wii_valid)
+                    wii_req <= 1'b1;
             end
-            if (!link)
+            if (!link) begin
                 pad_req <= 1'b0;
+                wii_req <= 1'b0;
+            end
 
             // A tap of HOME, after the tick so that a new tap wins.
             home_prev <= pad_held[W_HOME];
@@ -310,7 +377,8 @@ module desk_link #(
                     txt_full <= 1'b1;
             end
 
-            // One frame at a time, the ID first, then the pad, then text.
+            // One frame at a time, the ID first, then the pad, the Wii
+            // report, then text.
             if (!sending) begin
                 idx <= 9'd0;
                 if (id_req) begin
@@ -323,6 +391,12 @@ module desk_link #(
                     kind <= K_PAD;
                     last <= 9'd7;
                     j1_frame <= j1_sent;
+                    sending <= 1'b1;
+                end else if (wii_req) begin
+                    wii_req <= 1'b0;
+                    kind <= K_WII;
+                    last <= 9'd9;
+                    wii_frame <= wii_report;
                     sending <= 1'b1;
                 end else if (txt_full) begin
                     kind <= K_TEXT;

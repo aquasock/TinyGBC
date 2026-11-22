@@ -879,6 +879,9 @@ void sender_step(StateSender &tx, const StateSlot &slot)
  * DATA also takes bytes 4 and 5 for the DATA2 read that follows. */
 uint32_t pad_status, pad_data, pad_data2;
 uint16_t pad_bits; /* RETRO_DEVICE_ID_JOYPAD_* bits */
+/* The wired controller and TinyTang's Bluetooth pad 1 together, as
+ * tinygbc_pad.h's held word: either pressing a button presses it. */
+unsigned pad_held_now;
 bool pad_ready;
 #ifdef GB_PAD_TRACE
 /* Print every change of the raw report, so a button can be identified by the
@@ -911,18 +914,23 @@ void pad_poll(void)
 		pad_last_valid = true;
 	}
 #endif
+	/* TinyTang's Bluetooth pad 1, from its 0x09 frames; the Game Boy has one
+	 * player, so pad 2 is not read. Zero outside link mode, so a build run
+	 * without TinyTang sees only the wired controller. */
+	pad_held_now = pad_link_held(TN_LINK_PAD(TN_LINK_PADS, 0));
+	if ((pad_status & present) == present)
+		pad_held_now |= pad_held(~pad_data2 & 0xffu, (~pad_data2 >> 8) & 0xffu);
+	/* Either controller makes a pad, so an absent wired one no longer hides
+	 * the Bluetooth one. */
+	pad_ready = (pad_status & present) == present || pad_held_now != 0;
 	pad_bits = 0;
-	pad_ready = (pad_status & present) == present;
 	if (!pad_ready)
 		return;
-
-	const unsigned b4 = ~pad_data2 & 0xffu;
-	const unsigned b5 = (~pad_data2 >> 8) & 0xffu;
 
 	/* Through the map the host sent: which controller button answers to each
 	 * Game Boy button. A mapping built without a host is PAD_DEFAULT_MAP, the
 	 * fixed decode the player had before the map existed. */
-	pad_bits = pad_decode(b4, b5, host_settings.pad_map);
+	pad_bits = pad_map_held(pad_held_now, host_settings.pad_map);
 #ifdef GB_CART
 	/* The desktop is over the game: its pointer has the controller. */
 	if (TN_LINK_STATUS & TN_LINK_SHOWN)
@@ -933,7 +941,7 @@ void pad_poll(void)
 /* HOME and MINUS together end a run built with FRAMES=0. */
 bool pad_quit(void)
 {
-	const unsigned held = pad_held(~pad_data2 & 0xffu, (~pad_data2 >> 8) & 0xffu);
+	const unsigned held = pad_held_now;
 
 	return pad_ready && (held & (PAD_HOME | PAD_MINUS)) == (PAD_HOME | PAD_MINUS);
 }
@@ -944,7 +952,7 @@ bool pad_quit(void)
  * goes through the mapping, which is the game's buttons and not the machine's. */
 unsigned pad_combo(void)
 {
-	const unsigned held = pad_held(~pad_data2 & 0xffu, (~pad_data2 >> 8) & 0xffu);
+	const unsigned held = pad_held_now;
 
 	if (!pad_ready || !(held & PAD_HOME))
 		return 0;

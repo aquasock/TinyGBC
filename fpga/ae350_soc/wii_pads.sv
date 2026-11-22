@@ -46,7 +46,11 @@
 //
 // pad0_held gives controller 0's buttons to fabric (desk_link.sv): report
 // bytes 4 and 5, byte 4 in bits 7:0, active high, or 0 unless the controller
-// is present and a Classic Controller.
+// is present and a Classic Controller. pad0_report gives desk_link the same
+// controller's last format-3 report as the controller sent it: bytes 0 to 3,
+// the four 8-bit stick axes (LX, RX, LY, RY), in bits 31:0, byte 0 in 7:0,
+// and bytes 6 and 7, the buttons, active low, in bits 47:32; pad0_valid says
+// the controller is present and a Classic Controller and has reported.
 module wii_pads #(
     parameter [31:0] ID_VALUE = 32'h544e5031, // "TNP1"
     parameter integer US_CLOCKS = 75,         // bus clocks per microsecond
@@ -70,7 +74,9 @@ module wii_pads #(
     input  wire [3:0]  sda_in,
     output wire [3:0]  scl_low,  // pull the line low
     output wire [3:0]  sda_low,
-    output reg  [15:0] pad0_held
+    output reg  [15:0] pad0_held,
+    output reg  [47:0] pad0_report,
+    output reg         pad0_valid
 );
     reg [11:0] quarter = QUARTER_RESET;
     reg restart = 1'b0;
@@ -80,6 +86,7 @@ module wii_pads #(
     wire [7:0] fails [0:3];
     wire [47:0] data [0:3];
     wire [47:0] ident [0:3];
+    wire [31:0] axes [0:3];
 
     genvar n;
     generate
@@ -89,17 +96,34 @@ module wii_pads #(
                 .scl_in(scl_in[n]), .sda_in(sda_in[n]),
                 .scl_low(scl_low[n]), .sda_low(sda_low[n]),
                 .present(status_bits[n][0]), .classic(status_bits[n][1]),
-                .reads(reads[n]), .fails(fails[n]), .data(data[n]), .ident(ident[n])
+                .reads(reads[n]), .fails(fails[n]), .data(data[n]), .ident(ident[n]),
+                .axes(axes[n])
             );
             assign status_bits[n][7:2] = 6'd0;
         end
     endgenerate
 
+    // Controller 0 has reported since it was last found: its data is its own
+    // and not what a controller before it left behind.
+    reg [15:0] reads0_seen = 16'd0;
+    reg pad0_fresh = 1'b0;
     always @(posedge clk or negedge resetn)
-        if (!resetn)
+        if (!resetn) begin
             pad0_held <= 16'd0;
-        else
+            pad0_report <= 48'd0;
+            pad0_valid <= 1'b0;
+            reads0_seen <= 16'd0;
+            pad0_fresh <= 1'b0;
+        end else begin
             pad0_held <= status_bits[0][1:0] == 2'b11 ? ~data[0][47:32] : 16'd0;
+            pad0_report <= {data[0][47:32], axes[0]};
+            reads0_seen <= reads[0];
+            if (status_bits[0][1:0] != 2'b11)
+                pad0_fresh <= 1'b0;
+            else if (reads[0] != reads0_seen)
+                pad0_fresh <= 1'b1;
+            pad0_valid <= status_bits[0][1:0] == 2'b11 && pad0_fresh;
+        end
 
     // DATA2's data half, taken when DATA is read.
     reg [15:0] taken [0:3];
@@ -192,7 +216,8 @@ module wii_pad_master #(
     output reg  [15:0] reads,
     output reg  [7:0]  fails,
     output reg  [47:0] data,
-    output reg  [47:0] ident
+    output reg  [47:0] ident,
+    output reg  [31:0] axes      // the last report's bytes 0 to 3, as sent
 );
     localparam [7:0] ADDR_W = 8'hA4, ADDR_R = 8'hA5; // 0x52 shifted, R/W bit
 
@@ -416,6 +441,7 @@ module wii_pad_master #(
             fails <= 8'd0;
             data <= 48'd0;
             ident <= 48'd0;
+            axes <= 32'd0;
         end else begin
             go <= 1'b0;
             if (restart) begin
@@ -485,6 +511,7 @@ module wii_pad_master #(
                                     present <= 1'b1;
                                 end else begin
                                     data <= format1;
+                                    axes <= rbytes[31:0];
                                     reads <= reads + 1'b1;
                                 end
                             end

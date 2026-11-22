@@ -174,6 +174,9 @@ module wii_pads_tb;
     // on it, where the dock's pull-downs hold both lines low.
     reg [3:0] dead = 4'b0000;
     wire [3:0] model_scl_low, model_sda_low;
+    wire [15:0] pad0_held;
+    wire [47:0] pad0_report;
+    wire pad0_valid;
 
     genvar n;
     generate for (n = 0; n < 4; n = n + 1) begin : bus
@@ -191,7 +194,8 @@ module wii_pads_tb;
         .clk(clk), .resetn(resetn), .haddr(haddr), .htrans(htrans),
         .hsel(hsel), .hwrite(hwrite), .hsize(hsize), .hwdata(hwdata),
         .hready_in(hready), .hrdata(hrdata), .hready(hready), .hresp(hresp),
-        .scl_in(scl_in), .sda_in(sda_in), .scl_low(scl_low), .sda_low(sda_low)
+        .scl_in(scl_in), .sda_in(sda_in), .scl_low(scl_low), .sda_low(sda_low),
+        .pad0_held(pad0_held), .pad0_report(pad0_report), .pad0_valid(pad0_valid)
     );
 
     task read_reg(input [11:0] address, output reg [31:0] value);
@@ -262,6 +266,13 @@ module wii_pads_tb;
         // the format-1 bytes it sent before, and its identity says 03.
         if (value != 32'h62101fa0 || data2[15:0] != 16'hfbff || data2[31:16] != 16'h0103)
             $fatal(1, "sample mismatch: DATA=%08x DATA2=%08x", value, data2);
+        // And to desk_link as it sent it: the four 8-bit axes, then the two
+        // button bytes; pad0_held is the same buttons, active high.
+        @(posedge clk); #1;
+        if (!pad0_valid || pad0_report !== {8'hfb, 8'hff, 8'h85, 8'h7f, 8'h83, 8'h80})
+            $fatal(1, "pad 0 report %012x valid %b", pad0_report, pad0_valid);
+        if (pad0_held !== 16'h0400)
+            $fatal(1, "pad 0 held %04x, expected 0400", pad0_held);
         // Pad 1 is the receiver: format 3 with identity byte 4 still 01.
         timeout = 0;
         status = 0;
@@ -302,11 +313,29 @@ module wii_pads_tb;
         read_reg(12'h010, status);
         if (status & 1)
             $fatal(1, "unplug was not detected: %08x", status);
+        if (pad0_valid)
+            $fatal(1, "pad 0's report still valid after the unplug");
         attached[0] = 1'b1;
+        // Found again, the report is not valid until the controller has
+        // reported: the identity read comes first.
+        timeout = 0;
+        while (!(dut.status_bits[0][1:0] == 2'b11) && timeout < 200000) begin
+            @(posedge clk);
+            timeout = timeout + 1;
+            if (dut.status_bits[0][1:0] != 2'b11 && pad0_valid)
+                $fatal(1, "pad 0's report valid before it was found again");
+        end
+        // Its identity has just been read; its first data read is still to
+        // come, so the report from before the unplug must not be offered.
+        @(posedge clk); #1;
+        if (pad0_valid)
+            $fatal(1, "pad 0's report valid before it reported again");
         repeat (150000) @(posedge clk);
         read_reg(12'h010, status);
         if ((status & 3) != 3 || wakes[0] < 2)
             $fatal(1, "replug failed: %08x wakes=%0d", status, wakes[0]);
+        if (!pad0_valid)
+            $fatal(1, "pad 0's report not valid after the replug");
         write_ctrl(12'd8);
         read_reg(12'h004, value);
         if (value != 8)

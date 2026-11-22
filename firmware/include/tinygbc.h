@@ -25,6 +25,7 @@ volatile uint32_t *tn_host_reg(uint32_t offset);
 #define TN_UART_RX      TN_REG(0x10) /* read: pops the oldest received byte */
 #define TN_UART_CTRL    TN_REG(0x14) /* read and write: TN_UART_LINK_MODE */
 #define TN_LINK_STATUS  TN_REG(0x18) /* read: the link's state */
+#define TN_LINK_PADS    TN_REG(0x1c) /* read: TinyTang's Bluetooth pads */
 
 #define TN_UART_TX_READY   0x01u /* the transmit holding register is free */
 #define TN_UART_TX_IDLE    0x02u /* and the last byte has left the pin */
@@ -38,8 +39,10 @@ volatile uint32_t *tn_host_reg(uint32_t offset);
  * frames. Received bytes go to the link's frame parser, never to
  * TN_UART_RX, and bytes written to TN_UART_DATA are sent as text frames, a
  * line at a time; the link answers TinyTang's core ID request, reports Wii
- * controller 1 as TinyTang's joypad word, a tap of HOME as LB, and draws
- * TinyDesk's layer over the picture. A write to TN_UART_CTRL completes once
+ * controller 1 as TinyTang's joypad word, a tap of HOME as LB, sends that
+ * controller's whole report as frame 0x21 so TinyTang can drive TinyDesk
+ * with it, keeps TinyTang's Bluetooth pads from its 0x09 frames in
+ * TN_LINK_PADS, and draws TinyDesk's layer over the picture. A write to TN_UART_CTRL completes once
  * everything written before it has been sent. The boot ROM always starts in
  * loader mode. */
 #define TN_UART_LINK_MODE  0x1u
@@ -49,6 +52,13 @@ volatile uint32_t *tn_host_reg(uint32_t offset);
 #define TN_LINK_LOST       0x8u /* a cell write was lost; sticky */
 #define TN_LINK_FRAMES(s)  (((s) >> 8) & 0xffu)
 #define TN_LINK_CELLS(s)   ((s) >> 16)
+/* PADS: TinyTang's Bluetooth pads, pad n (0 or 1) in bits 16n+15:16n, from
+ * its 0x09 frames, active high, in TinyTang's pad order (tang_pad.h): B, Y,
+ * SELECT, START, up, down, left, right, A, X, L, R from bit 0, HOME in bit
+ * 12. Zero outside link mode, and 250 ms after TinyTang's last frame. The
+ * bits themselves are tinygbc_pad.h's PAD_LINK_*, where the host test can
+ * reach them. */
+#define TN_LINK_PAD(s, n)  ((uint16_t)((s) >> (16u * (n))))
 
 /* HDMI video (fpga/ae350_soc/video.sv): 1280x720 60 Hz showing a 160x144
  * frame buffer at 5x, or fabric colour bars until TN_VIDEO_ENABLE is set.

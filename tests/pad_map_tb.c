@@ -152,6 +152,64 @@ int main(void)
 	press(PAD_HOME, &b4, &b5);
 	check(pad_held(b4, b5) == PAD_HOME, "byte 4 bit 3 is HOME");
 
+	/* 8. TinyTang's Bluetooth pad word (its 0x09 frames) reaches the held
+	 *    word button for button, each bit to the Classic button in the same
+	 *    position, and so goes through the same mapping as the wired pad. */
+	{
+		static const struct { unsigned link, held; } want[] = {
+			{ PAD_LINK_B, PAD_B },          { PAD_LINK_Y, PAD_Y },
+			{ PAD_LINK_SELECT, PAD_MINUS }, { PAD_LINK_START, PAD_PLUS },
+			{ PAD_LINK_UP, PAD_UP },        { PAD_LINK_DOWN, PAD_DOWN },
+			{ PAD_LINK_LEFT, PAD_LEFT },    { PAD_LINK_RIGHT, PAD_RIGHT },
+			{ PAD_LINK_A, PAD_A },          { PAD_LINK_X, PAD_X },
+			{ PAD_LINK_L, PAD_L },          { PAD_LINK_R, PAD_R },
+			{ PAD_LINK_HOME, PAD_HOME },
+		};
+		unsigned all = 0;
+
+		for (unsigned i = 0; i < sizeof want / sizeof want[0]; i++) {
+			check(pad_link_held(want[i].link) == want[i].held,
+			      "a Bluetooth button is its Classic button");
+			all |= want[i].link;
+		}
+		/* TinyTang's bits are 0 to 12 and nothing else. */
+		check(all == 0x1fffu, "the Bluetooth word is bits 0 to 12");
+		check(pad_link_held(0xe000u) == 0, "bits past HOME press nothing");
+		check(pad_link_held(0) == 0, "an idle Bluetooth pad presses nothing");
+
+		/* The default mapping over the Bluetooth pad is the default over the
+		 * wired one: A is A, B is B, START and SELECT, and the d-pad. */
+		const uint8_t def[8] = PAD_DEFAULT_MAP;
+		check(pad_map_held(pad_link_held(PAD_LINK_A), def) == (1u << PAD_JOY_A),
+		      "Bluetooth A is the Game Boy's A");
+		check(pad_map_held(pad_link_held(PAD_LINK_B), def) == (1u << PAD_JOY_B),
+		      "Bluetooth B is the Game Boy's B");
+		check(pad_map_held(pad_link_held(PAD_LINK_START), def) ==
+		      (1u << PAD_JOY_START), "Bluetooth START is START");
+		check(pad_map_held(pad_link_held(PAD_LINK_SELECT), def) ==
+		      (1u << PAD_JOY_SELECT), "Bluetooth SELECT is SELECT");
+		check(pad_map_held(pad_link_held(PAD_LINK_LEFT | PAD_LINK_UP), def) ==
+		      ((1u << PAD_JOY_LEFT) | (1u << PAD_JOY_UP)),
+		      "the Bluetooth d-pad is the d-pad");
+		/* HOME is the machine's, never a game button. */
+		check(pad_map_held(pad_link_held(PAD_LINK_HOME), def) == 0,
+		      "Bluetooth HOME is no game button");
+
+		/* Either controller pressing a button presses it: the wired A and
+		 * the Bluetooth B together are both. */
+		press(PAD_A, &b4, &b5);
+		check(pad_map_held(pad_held(b4, b5) | pad_link_held(PAD_LINK_B), def) ==
+		      ((1u << PAD_JOY_A) | (1u << PAD_JOY_B)),
+		      "the wired and Bluetooth pads combine");
+		/* pad_decode is pad_map_held over the report, for every report. */
+		for (unsigned r = 0; r < 65536; r++)
+			if (pad_decode(r & 0xffu, r >> 8, def) !=
+			    pad_map_held(pad_held(r & 0xffu, r >> 8), def)) {
+				check(false, "pad_decode matches pad_map_held");
+				break;
+			}
+	}
+
 	if (failures) {
 		printf("TinyGBC PADMAP FAILED %u\n", failures);
 		return 1;

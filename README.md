@@ -8,8 +8,10 @@ browses the card's cartridges and launches one with the picture on HDMI, sound
 on HDMI and on a Pmod I2S2, and Wii Classic Controllers as the pad, and keeps
 each cartridge's battery save, its own clock and one save state on the card
 (*The desk launcher*, below). TinyGBC ships on TinyTang's release card from
-v0.2.0. Bluetooth pads drive TinyDesk but do not reach the game yet: TinyTang
-sends them to the core as frame 0x09, which this core's link does not read.
+v0.2.0. TinyTang's Bluetooth Pad 1 plays beside the wired controller, from
+the 0x09 frames TinyTang sends, and over a running game the wired Classic
+drives TinyDesk with the same map as on the desktop, through the 0x21 report
+this core sends up the link (*Bluetooth pads and the desk*, below).
 
 `gb_bench` is where the port started, answering whether the A25 can run
 gambatte fast enough, and `fpga/ae350_soc` is TinyNES's AE350 SoC brought into
@@ -114,6 +116,34 @@ mkdir -p build/wii_pads_tb
 iverilog -g2012 -s wii_pads_tb -o build/wii_pads_tb/tb \
   fpga/ae350_soc/wii_pads.sv tests/wii_pads_tb.sv
 vvp build/wii_pads_tb/tb
+```
+
+### Bluetooth pads and the desk
+
+The link (`fpga/ae350_soc/desk_link.sv`) carries two pad frames besides
+TinyDesk's own, both taken from TinyNES, whose author licensed them to this
+tree under GPL-2.0-only. Inbound, TinyTang sends its Bluetooth pads as frame
+0x09, two big-endian words in its pad order with HOME in bit 12; the link
+keeps a four-byte frame as `TN_LINK_PADS` (`0xe800001c`), lets it go 250 ms
+after the last frame and when link mode ends, so a button cannot stay held
+when TinyTang stops sending, and ignores a shorter frame. The player takes
+pad 1 as the Classic's own buttons, position for position
+(`pad_link_held()` in `tinygbc_pad.h`), ORed with the wired controller before
+the mapping, so the Input page's map, HOME with L or R and HOME with Minus
+apply to it unchanged, and an absent wired controller no longer hides it. The
+Game Boy has one player, so pad 2 is not read. Outbound, the link sends
+controller 0's format-3 report, bytes 0 to 3, 6 and 7, as response 0x21 at
+every 20 ms report tick while that controller has reported since it was last
+found, in link mode only. TinyTang reads it as the Classic on its own bus, so
+over a running game the wired controller drives TinyDesk with the stick as the
+pointer and the d-pad as the arrows, instead of the old pointer the 0x03 pad
+word gave it. `tests/desk_link_tb.sv` covers both:
+
+```sh
+mkdir -p build/desk_link_tb
+iverilog -g2012 -s desk_link_tb -o build/desk_link_tb/tb \
+  fpga/ae350_soc/exts_uart.sv fpga/ae350_soc/desk_link.sv tests/desk_link_tb.sv
+vvp -n build/desk_link_tb/tb
 ```
 
 `FRAMES=0` runs until **HOME and Minus** are held together, which is how a play
@@ -343,6 +373,15 @@ file may not be re-synced from TinyNES's current tree without bringing GPL-3.0
 in with it, which this repository cannot carry. MIT is compatible with
 GPL-2.0-only, so both files sit under the repository licence without any
 change to what is granted.
+
+The Bluetooth pad frame and the 0x21 report in `fpga/ae350_soc/desk_link.sv`,
+`exts_uart.sv`, `wii_pads.sv` and `ae350_soc.sv`, and `tests/desk_link_tb.sv`,
+came from TinyNES after it became GPL-3.0-only (its commits `d84d43c` and
+`94b3e83`). They are this project's own work, and on 2026-11-22 their author,
+who holds the copyright, licensed them to this tree under GPL-2.0-only, which
+is a grant only the copyright holder can make. That covers these changes
+alone: any other TinyNES code written after its relicensing still needs the
+same decision before it can come here.
 
 The other third-party files carried in this tree are libretro-common's raw
 DEFLATE decoder (MIT, RetroArch team): three files under

@@ -95,12 +95,52 @@ static inline unsigned pad_held(unsigned b4, unsigned b5)
 	return ((b4 >> 1) & 0x7fu) | ((b5 & 0xffu) << 7);
 }
 
-/* One report and one mapping as the buttons now held: a 16-bit word whose set
- * bits are RETRO_DEVICE_ID_JOYPAD_* positions. An index at or past the table
- * names no button, which is how a file leaves one unbound. */
-static inline uint16_t pad_decode(unsigned b4, unsigned b5, const uint8_t *map)
+/* TinyTang's Bluetooth pad word, from the link's 0x09 frames (TinyTang's
+ * tang_pad.h order, active high, HOME in bit 12). */
+enum {
+	PAD_LINK_B      = 1u << 0,
+	PAD_LINK_Y      = 1u << 1,
+	PAD_LINK_SELECT = 1u << 2,
+	PAD_LINK_START  = 1u << 3,
+	PAD_LINK_UP     = 1u << 4,
+	PAD_LINK_DOWN   = 1u << 5,
+	PAD_LINK_LEFT   = 1u << 6,
+	PAD_LINK_RIGHT  = 1u << 7,
+	PAD_LINK_A      = 1u << 8,
+	PAD_LINK_X      = 1u << 9,
+	PAD_LINK_L      = 1u << 10,
+	PAD_LINK_R      = 1u << 11,
+	PAD_LINK_HOME   = 1u << 12,
+};
+
+/* A Bluetooth pad as the Classic's held word above, button for button by
+ * position, so the mapping, the HOME chords and the quit take it exactly as
+ * they take the wired controller. The pad word has no ZL or ZR, and its stick
+ * arrives as its directions. */
+static inline unsigned pad_link_held(unsigned link)
 {
-	const unsigned held = pad_held(b4, b5);
+	static const struct { uint16_t link, held; } map[] = {
+		{ PAD_LINK_B, PAD_B },         { PAD_LINK_Y, PAD_Y },
+		{ PAD_LINK_SELECT, PAD_MINUS }, { PAD_LINK_START, PAD_PLUS },
+		{ PAD_LINK_UP, PAD_UP },       { PAD_LINK_DOWN, PAD_DOWN },
+		{ PAD_LINK_LEFT, PAD_LEFT },   { PAD_LINK_RIGHT, PAD_RIGHT },
+		{ PAD_LINK_A, PAD_A },         { PAD_LINK_X, PAD_X },
+		{ PAD_LINK_L, PAD_L },         { PAD_LINK_R, PAD_R },
+		{ PAD_LINK_HOME, PAD_HOME },
+	};
+	unsigned held = 0;
+
+	for (unsigned i = 0; i < sizeof map / sizeof map[0]; i++)
+		if (link & map[i].link)
+			held |= map[i].held;
+	return held;
+}
+
+/* A held word and one mapping as the buttons now held: a 16-bit word whose
+ * set bits are RETRO_DEVICE_ID_JOYPAD_* positions. An index at or past the
+ * table names no button, which is how a file leaves one unbound. */
+static inline uint16_t pad_map_held(unsigned held, const uint8_t *map)
+{
 	uint16_t bits = 0;
 
 	for (unsigned i = 0; i < 8; i++) {
@@ -110,6 +150,12 @@ static inline uint16_t pad_decode(unsigned b4, unsigned b5, const uint8_t *map)
 			bits |= (uint16_t)(1u << pad_joypad[i]);
 	}
 	return bits;
+}
+
+/* One report and one mapping, as pad_map_held() gives them. */
+static inline uint16_t pad_decode(unsigned b4, unsigned b5, const uint8_t *map)
+{
+	return pad_map_held(pad_held(b4, b5), map);
 }
 
 #endif /* TINYGBC_PAD_H */

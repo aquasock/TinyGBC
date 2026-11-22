@@ -251,8 +251,10 @@ module ae350_soc_top #(
     wire link, rx_link_valid, txt_valid, txt_ready, ln_valid, ln_ready;
     wire link_idle, link_flush;
     wire [7:0] rx_link_data, txt_data, ln_data;
-    wire [31:0] link_status;
+    wire [31:0] link_status, link_pads;
     wire [15:0] pad0_held;
+    wire [47:0] pad0_report;
+    wire pad0_valid;
     wire layer_on, cell_valid, cell_ready;
     wire [11:0] cell_addr;
     wire [36:0] cell_data;
@@ -307,6 +309,7 @@ module ae350_soc_top #(
         .link_idle(link_idle),
         .link_flush(link_flush),
         .link_status(link_status),
+        .link_pads(link_pads),
         .tx(uart_tx),
         .rx(uart_rx)
     );
@@ -320,10 +323,12 @@ module ae350_soc_top #(
         .ln_valid(ln_valid), .ln_data(ln_data), .ln_ready(ln_ready),
         .idle(link_idle),
         .pad_held(pad0_held),
+        .wii_report(pad0_report), .wii_valid(pad0_valid),
         .cell_valid(cell_valid), .cell_addr(cell_addr), .cell_data(cell_data),
         .cell_ready(cell_ready),
         .layer_on(layer_on),
-        .status(link_status)
+        .status(link_status),
+        .pads(link_pads)
     );
 
     wire [3:0] pad_scl_in, pad_sda_in, pad_scl_low, pad_sda_low;
@@ -362,7 +367,7 @@ module ae350_soc_top #(
         .hrdata(pads_rdata), .hready(pads_ready), .hresp(pads_resp),
         .scl_in(pad_scl_in), .sda_in(pad_sda_in),
         .scl_low(pad_scl_low), .sda_low(pad_sda_low),
-        .pad0_held(pad0_held)
+        .pad0_held(pad0_held), .pad0_report(pad0_report), .pad0_valid(pad0_valid)
     );
 
     // The instance name sorts after "bus_clk": Yosys names a flattened net

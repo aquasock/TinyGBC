@@ -1472,3 +1472,43 @@ Entry 41's list stands in its order: the paced console run that makes no frames 
 - User Test: N/A
 
 ---
+
+## 44 COMMIT Unreleased 2026-11-22T15:29:36-07:00
+
+#### Coming From:
+
+Unreleased c3438a2
+
+#### Purpose:
+
+Let TinyTang's Bluetooth pad play TinyGBC and let the wired Classic drive TinyDesk over a running game with TinyTang's current map, by taking TinyNES's 0x09 receiver and 0x21 report into this core.
+
+#### Outcome:
+
+The operator tried TinyGBC and found two faults: an 8BitDo paired to TinyTang over Bluetooth did nothing in a game, and over a running game the wired Classic moved TinyDesk the old way. Both were the link. TinyTang sends its Bluetooth pads to every core as frame 0x09, and this core's `desk_link.sv` skipped it; and TinyTang reads the Classic only on the desktop core's own bus, which this core replaces, so over a game it saw only the 0x03 pad word, whose d-pad drives its old pointer. TinyNES fixed both for itself in its entries 57 and 58, and this tree's `fpga/ae350_soc/` files differed from TinyNES's before those commits only in their licence lines and in this tree's eight-bit video index, so TinyNES's fabric diff from `d84d43c~1` to `94b3e83` was applied to `ae350_soc.sv`, `desk_link.sv`, `exts_uart.sv` and `wii_pads.sv` without a conflict, its `tests/wii_pads_tb.sv` diff likewise, and its `tests/desk_link_tb.sv` was copied in. TinyNES is GPL-3.0-only and this tree GPL-2.0-only, and entry 42 recorded that code may only flow from here to there; the operator, who wrote these changes and holds their copyright, chose to license them to this tree under GPL-2.0-only, and `README.md`'s licensing section records that grant and that it covers these changes alone. The link now keeps a four-byte 0x09 frame as PADS at `0xe800001c`, lets it go 250 ms after the last frame at this core's 75 MHz bus and when link mode ends, and sends controller 0's format-3 report as response 0x21 every 20 ms tick while that controller has reported since it was last found. In the player, `firmware/include/tinygbc_pad.h` gains TinyTang's pad bits as `PAD_LINK_*`, `pad_link_held()`, which turns them into the Classic's held word position for position, and `pad_map_held()`, of which `pad_decode()` is now one call; `firmware/include/tinygbc.h` gains `TN_LINK_PADS` and `TN_LINK_PAD()`; and `pad_poll()` in `firmware/apps/gb_bench/main.cpp` ORs Bluetooth pad 1 into the held word before the mapping, so the Input page's map, HOME with L or R and HOME with Minus apply to it, and a missing wired controller no longer hides it. The Game Boy has one player, so pad 2 is not read. The link testbench passes all ten sections, including the pads held 20000 clocks past the last frame and the 0x21 report at every tick while present; the pad testbench passes; `tests/pad_map_tb.c` gained a Bluetooth section of twenty-one checks and `tools/test_pad_map.sh` passes, as do `tools/test_video_options.sh` and `tools/test_cart_zip.sh`. Seven planted faults were each caught: three in the Bluetooth translation, a byte swap of the 0x09 words, no release after the hold, the wrong response type and a 0x21 report without the freshness check. The player was built into a fresh `build/firmware/apps/gb_card_pads` with no warnings, 3,249,288 bytes, SHA-256 `830c4cd6eb21c3d2e114312e2924e999296a115b6c004d3ca4e58f1d03ccff1b`. The core at its deployed seed 6 failed timing at 73.33 MHz on `bus_clk`, so seeds 1 to 8 were swept with the pixel clock routed first: seeds 2, 4, 5 and 8 cleared the bus with no hold violation, at 75.49, 83.38, 76.83 and 81.35 MHz. Seed 4 had the most margin but `tools/build_ae350_soc.sh` refused to pack it, because its pixel clock reaches the spines through SPINE0 as well as SPINE16 and SPINE25, a set never measured on this board; seed 8 uses the measured SPINE16 and SPINE25 pair and was built with apicula 0.34 and the nextpnr fork in `~/tools/nextpnr-mathieufro`, giving `tinygbc.bin` of 4,762,092 bytes, SHA-256 `4286d8606f83877d1512578c034dc6ad32b5b2a179f83cf148119e27d6fc4c56`, at 81.35 MHz on `bus_clk` and 92.05 MHz on `pix_clk` against 75 and 74.25. `tools/build_ae350_soc.sh` still defaults to seed 6, and its comment of seed history is left for the cycle that next moves it, because the deployed seed is recorded here. On the operator's go the image was checked against its `.fs` and both files were put on the card with TinyTang's `tools/tinytang_put.py` over the by-id console port, the core at `/root/cores/console138k/tinygbc.bin` and the player at `/root/ae350/tinygbc-play.elf`, without the deploy script's standalone `tangload`, since the TinyGBC window loads the core itself. The operator then reported both working on the board: the 8BitDo plays a Game Boy game, and over a running game the wired Classic drives TinyDesk with TinyTang's current map. `README.md` describes both frames, and `.ai/core-reference.md` carries a dated revision to PROT-010 with its fast-lookup line and one routing row. The core-syntax audit was run: `.ai/core.md` and `.ai/core-syntax.md` were re-read, `.ai/core.md` was confirmed unchanged, the complete `.ai/` diff was inspected and holds this entry and the PROT-010 revision, the six YAML blocks parse, entries 1 to 43 were not rewritten, and this entry was validated as number 44 with six canonical sections in order, a one-sentence Purpose, prose in Outcome and Next Steps, only eligible paths in Files Modified and allowed Status values.
+
+#### Next Steps:
+
+The build script's default seed should move from 6 to 8 with its history comment, in the next cycle that builds this core, since seed 6 no longer meets timing on this design. The card now carries this core and player in place of the v0.2.1 pair, so whether the next TinyTang release ships them is the operator's call. Entry 41's list stands in its order: the paced console run that makes no frames after the first, auto-resume, recently played and favourites with the 56-byte name cap, frame blending and the wider palette list, a `tools/test_gb_bench.sh`, fast-forward, cheats, more save states and the link cable.
+
+#### Files Modified:
+
+- README.md
+- firmware/apps/gb_bench/main.cpp
+- firmware/include/tinygbc.h
+- firmware/include/tinygbc_pad.h
+- fpga/ae350_soc/ae350_soc.sv
+- fpga/ae350_soc/desk_link.sv
+- fpga/ae350_soc/exts_uart.sv
+- fpga/ae350_soc/wii_pads.sv
+- tests/desk_link_tb.sv
+- tests/pad_map_tb.c
+- tests/wii_pads_tb.sv
+
+#### Status:
+
+- Build: PASS
+- Deployment: PASS
+- User Test: PASS
+
+---

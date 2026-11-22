@@ -17,6 +17,8 @@
 //         completes once everything written before it has left the pin,
 //         buffered link text included, which it sends at once.
 //   0x18  read: LINK, desk_link's status (link_status).
+//   0x1c  read: PADS, TinyTang's Bluetooth pads as desk_link holds them
+//         (link_pads): pad 1 in bits 15:0, pad 2 in bits 31:16.
 // All 32 address bits are decoded; any other address, or a write to a
 // read-only register or a read of 0x00, gets an AHB ERROR response.
 //
@@ -72,6 +74,7 @@ module exts_uart #(
     input  wire        link_idle,
     output wire        link_flush,
     input  wire [31:0] link_status,
+    input  wire [31:0] link_pads,
     output wire        tx,
     input  wire        rx
 );
@@ -80,16 +83,17 @@ module exts_uart #(
     localparam integer RX_AW = $clog2(RX_DEPTH);
 
     localparam [31:0] BASE = 32'he8000000;
-    localparam [2:0] REG_TX = 3'd0;
-    localparam [2:0] REG_STATUS = 3'd1;
-    localparam [2:0] REG_ID = 3'd2;
-    localparam [2:0] REG_SCRATCH = 3'd3;
-    localparam [2:0] REG_RX = 3'd4;
-    localparam [2:0] REG_CTRL = 3'd5;
-    localparam [2:0] REG_LINK = 3'd6;
-    localparam [2:0] REG_NONE = 3'd7;
+    localparam [3:0] REG_TX = 4'd0;
+    localparam [3:0] REG_STATUS = 4'd1;
+    localparam [3:0] REG_ID = 4'd2;
+    localparam [3:0] REG_SCRATCH = 4'd3;
+    localparam [3:0] REG_RX = 4'd4;
+    localparam [3:0] REG_CTRL = 4'd5;
+    localparam [3:0] REG_LINK = 4'd6;
+    localparam [3:0] REG_PADS = 4'd7;
+    localparam [3:0] REG_NONE = 4'd8;
 
-    reg [2:0] target = REG_NONE;
+    reg [3:0] target = REG_NONE;
     reg write = 1'b0;
     reg pending = 1'b0;
     reg error_second = 1'b0;
@@ -149,7 +153,7 @@ module exts_uart #(
     assign link_flush = pending && target == REG_CTRL;
     wire all_sent = tx_idle && !hold_full && link_idle;
 
-    function [2:0] decode(input [31:0] addr, input is_write);
+    function [3:0] decode(input [31:0] addr, input is_write);
         if (addr == BASE + 32'h0 && is_write)
             decode = REG_TX;
         else if (addr == BASE + 32'h4)
@@ -164,6 +168,8 @@ module exts_uart #(
             decode = REG_CTRL;
         else if (addr == BASE + 32'h18 && !is_write)
             decode = REG_LINK;
+        else if (addr == BASE + 32'h1c && !is_write)
+            decode = REG_PADS;
         else
             decode = REG_NONE;
     endfunction
@@ -354,6 +360,11 @@ module exts_uart #(
                         end
                     REG_LINK: begin
                         hrdata <= link_status;
+                        pending <= 1'b0;
+                        hready <= 1'b1;
+                    end
+                    REG_PADS: begin
+                        hrdata <= link_pads;
                         pending <= 1'b0;
                         hready <= 1'b1;
                     end
