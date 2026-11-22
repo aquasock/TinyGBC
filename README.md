@@ -3,12 +3,18 @@
 A Game Boy Color port in the form TinyNES took: gambatte on the AE350 inside
 the Tang Console 138K.
 
-**Status: the emulator is measured and the video unit is retargeted, but
-nothing has been shown on a screen yet.** `gb_bench` answers whether the A25
-can run gambatte fast enough; `fpga/ae350_soc` is TinyNES's AE350 SoC brought
-into this tree and changed to draw a 160x144 Game Boy frame instead of the
-NES's 256x240. The A25 does not yet write frames into the frame buffer, so the
-picture path is built and timed but not exercised.
+**Status: integrated and playable on the board.** TinyTang's TinyGBC window
+browses the card's cartridges and launches one with the picture on HDMI, sound
+on HDMI and on a Pmod I2S2, and Wii Classic Controllers as the pad, and keeps
+each cartridge's battery save, its own clock and one save state on the card
+(*The desk launcher*, below). TinyGBC ships on TinyTang's release card from
+v0.2.0. Bluetooth pads drive TinyDesk but do not reach the game yet: TinyTang
+sends them to the core as frame 0x09, which this core's link does not read.
+
+`gb_bench` is where the port started, answering whether the A25 can run
+gambatte fast enough, and `fpga/ae350_soc` is TinyNES's AE350 SoC brought into
+this tree and changed to draw a 160x144 Game Boy frame instead of the NES's
+256x240.
 
 ## gb_bench
 
@@ -184,7 +190,10 @@ fewer bytes leaves the player on its default mapping rather than zeroing it: a
 launcher built before the mapping sends sixteen and a player built before the
 clock asks for two, and neither disturbs the other. It prints
 `TinyGBC GB VOLUME=<percent>` and `TinyGBC GB PADMAP=<eight indices>`. The Saves
-page is still a placeholder until the player has something to set.
+page shows, for the selected cartridge, when its state, its battery save and its
+clock were last written and whether the board's own clock is set, which a
+cartridge clock depends on, with the state file's details dimmed below; it names
+`/root/states/gbc` and `/root/saves/gbc` and deletes nothing.
 
 Its Video page sets the picture's palette and its colour correction, kept under
 `[video]` of the same file. Neither is a fabric setting: the video unit's

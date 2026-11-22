@@ -1442,3 +1442,33 @@ The licence is settled and nothing further is owed on it, but the same pass has 
 - User Test: N/A
 
 ---
+
+## 43 COMMIT Unreleased 2026-11-22T10:12:40-07:00
+
+#### Coming From:
+
+Unreleased 27d9eec
+
+#### Purpose:
+
+Bring the README's status in line with what TinyGBC does today, at the operator's request during a documentation pass across the TinyTang ecosystem.
+
+#### Outcome:
+
+The README opened by saying the emulator was measured but nothing had been shown on a screen, and its launcher section called the Saves page a placeholder; both had been false for weeks. The status now says TinyGBC is integrated and playable: TinyTang's window launches a cartridge with the picture on HDMI, sound on HDMI and a Pmod I2S2 and Wii Classic Controllers as the pad, and keeps each cartridge's battery save, its own clock and one save state on the card, as this README's later sections and entries 30 to 38 record; it ships on TinyTang's release card from v0.2.0, per that repository's `docs/releases/v0.2.0.md`. It also says plainly that Bluetooth pads drive TinyDesk but do not reach the game, because TinyTang sends them as frame 0x09 and `fpga/ae350_soc/desk_link.sv` here handles only 0x08, 0x13, 0x14 and 0x15, which was read from the source rather than assumed. The Saves page sentence now describes the page TinyTang's entry 73 built: when the state, the battery save and the clock were last written, whether the board's clock is set, the state's details dimmed below, the two folders, and no deletion. `gb_bench` and `fpga/ae350_soc` are kept in the opening as where the port started. Nothing was built or deployed and the board was not touched. The core-syntax audit was run: `.ai/core.md` and `.ai/core-syntax.md` were re-read, `.ai/core.md` was confirmed unchanged, the complete `.ai/` diff was inspected and holds only this entry, and this entry was validated as number 43 of 100 with six canonical sections in order, a one-sentence Purpose, prose in Outcome and Next Steps, only eligible paths in Files Modified and allowed Status values.
+
+#### Next Steps:
+
+Entry 41's list stands in its order: the paced console run that makes no frames after the first, auto-resume, recently played and favourites with the 56-byte name cap, frame blending and the wider palette list, a `tools/test_gb_bench.sh`, fast-forward, cheats, more save states and the link cable. Taking TinyTang's frame 0x09 in `desk_link.sv`, as TinyNES did in its entry 57, would let Bluetooth pads play TinyGBC.
+
+#### Files Modified:
+
+- README.md
+
+#### Status:
+
+- Build: N/A
+- Deployment: N/A
+- User Test: N/A
+
+---
